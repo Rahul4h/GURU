@@ -1,0 +1,150 @@
+{% extends 'base.html' %}
+{% block title %}Home | GURU{% endblock %}
+
+{% block content %}
+<div class="min-h-screen flex items-start justify-center p-4">
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-6xl">
+
+  <!-- LEFT: Form -->
+  <div class="bg-white rounded-2xl shadow-lg p-6 space-y-6">
+    <p class="text-center text-gray-600">Get personalized Codeforces insights based on your handle.</p>
+
+    <form id="guruForm" class="space-y-4">
+      <input type="text" id="handle" name="handle" placeholder="Enter Codeforces handle"
+        class="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" required />
+      <button type="submit"
+        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200">
+        Get Insights
+      </button>
+    </form>
+  </div>
+
+  <!-- RIGHT: Fetched Profile + Chart + Stats -->
+  <div id="result" class="bg-white rounded-2xl shadow-lg p-6 text-sm text-gray-700 hidden">
+    <!-- Fetched data goes here -->
+  </div>
+
+</div>
+
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const form = document.getElementById("guruForm");
+  const resultDiv = document.getElementById("result");
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const handle = document.getElementById("handle").value;
+
+    resultDiv.classList.remove("hidden");
+    resultDiv.innerText = "Analyzing... Please wait.";
+
+    const response = await fetch("/analyze/", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": getCookie("csrftoken")
+      },
+      body: JSON.stringify({ handle })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      if (!data.ratingHistory.length) {
+        resultDiv.innerHTML = `<p class="text-red-500 mt-4">No contest history found.</p>`;
+        return;
+      }
+
+      const tagItems = (data.tagStats || []).map(
+        ([tag, count]) => `<li>${tag}: ${count}</li>`
+      ).join('') || "<li>No tag data available.</li>";
+
+      const diff = data.ratingBuckets || {};
+      const difficultyItems = `
+        <li>Problems &lt; 1200: ${diff.under_1200 || 0}</li>
+        <li>1200–1399: ${diff["1200_1399"] || 0}</li>
+        <li>1400–1599: ${diff["1400_1599"] || 0}</li>
+        <li>1600–1899: ${diff["1600_1899"] || 0}</li>
+      `;
+
+      // Inject everything in one go
+      resultDiv.innerHTML = `
+        <div class="flex items-center space-x-4 mb-4">
+          <img src="${data.avatar}" alt="avatar" class="w-12 h-12 rounded-full border" />
+          <div>
+            <p class="font-bold">${data.handle}</p>
+            <p>Rank: ${data.rank} | Rating: ${data.rating}</p>
+            <p>Max Rank: ${data.maxRank} | Max Rating: ${data.maxRating}</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <canvas id="ratingChart" height="200"></canvas>
+          </div>
+          <div>
+            <h3 class="text-md font-semibold text-gray-700">Tags (Best to Worst):</h3>
+            <ul class="list-disc list-inside text-gray-600 space-y-1">${tagItems}</ul>
+
+            <h3 class="text-md font-semibold text-gray-700 mt-4">Problems by Difficulty:</h3>
+            <ul class="list-disc list-inside text-gray-600 space-y-1">${difficultyItems}</ul>
+          </div>
+        </div>
+      `;
+
+      // Render Chart
+      const ctx = document.getElementById('ratingChart').getContext('2d');
+      const labels = data.ratingHistory.map(d => new Date(d.timestamp * 1000).toLocaleDateString());
+      const ratings = data.ratingHistory.map(d => d.rating);
+
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Rating',
+            data: ratings,
+            borderColor: '#3B82F6',
+            backgroundColor: 'rgba(59, 130, 246, 0.2)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 3,
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: true },
+            title: { display: true, text: 'Codeforces Rating History' }
+          },
+          scales: {
+            y: { beginAtZero: false }
+          }
+        }
+      });
+
+    } else {
+      resultDiv.innerText = "Error: " + (data.error || "Something went wrong.");
+    }
+  });
+
+  function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== "") {
+      const cookies = document.cookie.split(";");
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        if (cookie.substring(0, name.length + 1) === name + "=") {
+          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+          break;
+        }
+      }
+    }
+    return cookieValue;
+  }
+</script>
+{% endblock %}
