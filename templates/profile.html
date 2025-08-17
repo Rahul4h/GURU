@@ -1,0 +1,201 @@
+
+
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ request.user.username }} — Profile | GURU{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div class="row">
+    <div class="col-md-4">
+      <!-- Avatar & basic -->
+      <div class="card mb-3">
+        <div class="card-body text-center">
+          {% if pform.instance.profile_picture %}
+            <img src="{{ pform.instance.profile_picture.url }}" class="rounded-circle mb-2" style="width:120px;height:120px;object-fit:cover;">
+          {% elif cf_info.avatar or cf_info.titlePhoto %}
+            <img src="{{ cf_info.titlePhoto|default:cf_info.avatar }}" class="rounded-circle mb-2" style="width:120px;height:120px;object-fit:cover;">
+          {% else %}
+            <img src="{% static 'images/default_avatar.png' %}" class="rounded-circle mb-2" style="width:120px;height:120px;object-fit:cover;">
+          {% endif %}
+
+          <h4>{{ request.user.username }}</h4>
+          {% if cf_info %}
+            <p class="mb-0">Rating: <strong>{{ cf_info.rating }}</strong></p>
+            <p class="mb-0">Max: {{ cf_info.maxRating }}</p>
+            <p class="text-muted mb-0">{{ cf_info.rank }}</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Update picture -->
+      <div class="card mb-3">
+        <div class="card-body">
+          <form method="post" enctype="multipart/form-data" action="{% url 'update_profile' %}">
+            {% csrf_token %}
+            {{ pform.profile_picture }}
+            <button class="btn btn-primary btn-sm mt-2" type="submit">Upload</button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Write Post -->
+      <div class="card mb-3">
+        <div class="card-body">
+          <h5>Write Post</h5>
+          <form method="post" enctype="multipart/form-data" action="{% url 'add_post' %}">
+            {% csrf_token %}
+            {{ post_form.title }}<br>
+            {{ post_form.content }}<br>
+            {{ post_form.image }}<br>
+            <button class="btn btn-success btn-sm mt-2" type="submit">Post</button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Add Tutorial -->
+      <div class="card mb-3">
+        <div class="card-body">
+          <h5>Add Tutorial</h5>
+          <form method="post" enctype="multipart/form-data" action="{% url 'add_tutorial' %}">
+            {% csrf_token %}
+            {{ tutorial_form.title }}<br>
+            {{ tutorial_form.content }}<br>
+            {{ tutorial_form.video }}<br>
+            <button class="btn btn-info btn-sm mt-2" type="submit">Add Tutorial</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-8">
+      <!-- Actions -->
+      <div class="d-flex justify-content-between mb-2">
+        <h4>Analytics</h4>
+        <button id="snapshotBtn" class="btn btn-outline-primary btn-sm">Update Analytics Now</button>
+      </div>
+
+      <!-- Rating Chart -->
+      <div class="card mb-3">
+        <div class="card-header">Rating History</div>
+        <div class="card-body">
+          <canvas id="ratingChart" height="120"></canvas>
+        </div>
+      </div>
+
+      <!-- Weakness Trend Chart -->
+      <div class="card mb-3">
+        <div class="card-header">Weakness Trend (avg weakness over time). Lower is better.</div>
+        <div class="card-body">
+          <canvas id="weaknessChart" height="120"></canvas>
+        </div>
+      </div>
+
+      <!-- Latest Snapshot: show latest tag scores -->
+      <div class="card mb-3">
+        <div class="card-header">Latest Weak Tags</div>
+        <div class="card-body">
+          {% with snapshots.last as latest %}
+            {% if latest %}
+              <ul>
+                {% for tag, score in latest.tag_scores.items %}
+                  <li>{{ tag }} — {{ score }}</li>
+                {% endfor %}
+              </ul>
+              <p>Avg weakness: {{ latest.avg_weakness }}</p>
+              <p>Snapshot taken: {{ latest.created_at }}</p>
+            {% else %}
+              <p class="text-muted">No snapshots yet. Click "Update Analytics Now".</p>
+            {% endif %}
+          {% endwith %}
+        </div>
+      </div>
+
+      <!-- posts & tutorials list -->
+      
+
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const cfRatings = {{ cf_ratings|safe }}; // list of contest objects
+  const snapshots = [
+    {% for s in snapshots %}
+      {
+        created_at: "{{ s.created_at|date:'Y-m-d H:i:s' }}",
+        avg_weakness: {{ s.avg_weakness }},
+        rating: {{ s.rating|default:"null" }},
+        tag_scores: {{ s.tag_scores|safe }}
+      }{% if not forloop.last %},{% endif %}
+    {% endfor %}
+  ];
+
+  // Rating chart
+  (function(){
+    const labels = cfRatings.map(e => e.contestName);
+    const data = cfRatings.map(e => e.newRating);
+    if (labels.length) {
+      new Chart(document.getElementById('ratingChart'), {
+        type: 'line',
+        data: { labels: labels, datasets: [{ label: 'Rating', data: data, borderColor: 'blue', fill: false }] },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+    } else {
+      document.getElementById('ratingChart').parentElement.innerHTML = '<p class="text-muted">No rating history available.</p>';
+    }
+  })();
+
+  // Weakness chart (avg_weakness over snapshots)
+  (function(){
+    const labels = snapshots.map(s => s.created_at);
+    const data = snapshots.map(s => s.avg_weakness);
+    if (labels.length) {
+      new Chart(document.getElementById('weaknessChart'), {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            { label: 'Avg Weakness (lower = better)', data: data, borderColor: 'red', fill: false }
+          ]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+    } else {
+      document.getElementById('weaknessChart').parentElement.innerHTML = '<p class="text-muted">No weakness snapshots yet.</p>';
+    }
+  })();
+
+  // snapshot button
+  document.getElementById('snapshotBtn').addEventListener('click', function(){
+    const btn = this;
+    btn.disabled = true;
+    btn.innerText = 'Updating...';
+    fetch("{% url 'take_snapshot' %}", {
+      method: 'POST',
+      headers: {'X-CSRFToken': '{{ csrf_token }}', 'Content-Type': 'application/json'},
+      body: JSON.stringify({})
+    })
+    .then(r => r.json())
+    .then(j => {
+      if (j.ok) {
+        location.reload(); // reload to show new snapshot
+      } else {
+        alert('Snapshot failed: ' + (j.error || 'unknown'));
+        btn.disabled = false;
+        btn.innerText = 'Update Analytics Now';
+      }
+    })
+    .catch(e=>{
+      alert('Error: '+e);
+      btn.disabled = false;
+      btn.innerText = 'Update Analytics Now';
+    });
+  });
+</script>
+{% endblock %}

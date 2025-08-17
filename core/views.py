@@ -1,6 +1,8 @@
 
-from django.shortcuts import render,redirect
+
 from django.http import JsonResponse
+from django.db import models
+
 import json
 import requests
 from django.views.decorators.csrf import csrf_exempt
@@ -9,10 +11,45 @@ from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
 from django.contrib import messages
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.utils.encoding import force_bytes, force_str
+from django.shortcuts import render, get_object_or_404, redirect
+from .models import Post,Comment, Reaction
+
+@login_required
+def blog_page(request):
+    posts = Post.objects.all().order_by('-created_at')
+    return render(request, 'blog.html', {'posts': posts})
 
 
+def blog_detail(request, post_id):
+    post = get_object_or_404(Post, id=post_id)
+    comments = post.comments.filter(parent__isnull=True).order_by("-created_at")
+    reactions = post.reactions.values("reaction_type").annotate(count=models.Count("id"))
 
+    if request.method == "POST":
+        if "comment" in request.POST:
+            Comment.objects.create(
+                post=post,
+                user=request.user,
+                content=request.POST["comment"],
+            )
+            return redirect("blog_detail", post_id=post.id)
 
+        if "reaction" in request.POST:
+            reaction_type = request.POST["reaction"]
+            reaction, created = Reaction.objects.update_or_create(
+                post=post, user=request.user,
+                defaults={"reaction_type": reaction_type},
+            )
+            return redirect("blog_detail", post_id=post.id)
+
+    return render(request, "blog_detail.html", {
+        "post": post,
+        "comments": comments,
+        "reactions": reactions,
+    })
 
 @login_required
 def index(request):
@@ -110,8 +147,7 @@ def analyze_handle(request):
         except Exception as e:
             return JsonResponse({'error': str(e)}, status=400)
 
-
-
+@login_required
 def suggestions_page(request):
     return render(request, 'suggestions.html')
 
@@ -214,25 +250,58 @@ def get_problemset():
     return res.json()['result']['problems']
 
 
-def recommend_problems(tag_scores, avg_rating, problems, solved_problems, max_per_tag=20):
-    """
-    Returns a prioritized list of unsolved problems based on weakest tags and difficulty.
-    The frontend can page through this list (e.g., show first 10, then next 10, etc.)
-    """
-    tag_scores = sorted(tag_scores, key=lambda x: x[1], reverse=True)  # Weakest tags first
-    recommendations = []
+from collections import defaultdict, Counter
+
+def recommend_problems_by_range(submissions, problems, solved_problems, ranges, max_per_tag=20):
+    all_range_recs = {}
     used_ids = set()
 
-    difficulty_buckets = [
-        (avg_rating - 200, avg_rating - 100, 2),
-        (avg_rating - 0, avg_rating + 0, 3),
-        (avg_rating + 100, avg_rating + 200, 3),
-        (avg_rating + 300, avg_rating + 400, 2)
-    ]
+    for r in ranges:
+        lower, upper = r
 
-    for tag, _ in tag_scores:
-        tag_problems = []
-        for lower, upper, _ in difficulty_buckets:
+        # 1. Filter submissions in this range
+        range_subs = []
+        for sub in submissions:
+            if 'problem' not in sub or 'verdict' not in sub:
+                continue
+            prob = sub['problem']
+            rating = prob.get('rating')
+            if rating is None or not (lower <= rating <= upper):
+                continue
+            range_subs.append(sub)
+
+        # 2. Analyze tag weakness in this range
+        correct_tags = Counter()
+        wrong_tags = Counter()
+        total_attempts = Counter()
+
+        for sub in range_subs:
+            prob = sub['problem']
+            tags = prob.get('tags', [])
+            verdict = sub.get('verdict')
+            if verdict == 'OK':
+                for tag in tags:
+                    correct_tags[tag] += 1
+                    total_attempts[tag] += 1
+            elif verdict in ['WRONG_ANSWER', 'TIME_LIMIT_EXCEEDED', 'RUNTIME_ERROR']:
+                for tag in tags:
+                    wrong_tags[tag] += 1
+                    total_attempts[tag] += 1
+
+        tag_scores = []
+        for tag in total_attempts:
+            correct = correct_tags[tag]
+            total = total_attempts[tag]
+            success_rate = correct / total if total > 0 else 0
+            weakness_score = 1 - success_rate
+            tag_scores.append((tag, round(weakness_score, 3)))
+
+        tag_scores.sort(key=lambda x: x[1], reverse=True)  # weak to strong
+
+        # 3. Recommend problems using weak tags in this range
+        range_recs = []
+        for tag, _ in tag_scores:
+            tag_problems = []
             for prob in problems:
                 tags = prob.get('tags', [])
                 rating = prob.get('rating', 0)
@@ -240,28 +309,30 @@ def recommend_problems(tag_scores, avg_rating, problems, solved_problems, max_pe
 
                 if prob_id in solved_problems or prob_id in used_ids:
                     continue
-
-                if tag not in tags:
+                if tag not in tags or not (lower <= rating <= upper):
                     continue
 
-                if lower <= rating <= upper:
-                    tag_problems.append({
-                        'name': f"{prob['contestId']}-{prob['index']}: {prob['name']}",
-                        'tags': tags,
-                        'rating': rating,
-                        'url': f"https://codeforces.com/problemset/problem/{prob['contestId']}/{prob['index']}",
-                        'tag': tag
-                    })
-                    used_ids.add(prob_id)
+                tag_problems.append({
+                    'name': f"{prob['contestId']}-{prob['index']}: {prob['name']}",
+                    'tags': tags,
+                    'rating': rating,
+                    'url': f"https://codeforces.com/problemset/problem/{prob['contestId']}/{prob['index']}",
+                    'tag': tag
+                })
+                used_ids.add(prob_id)
 
                 if len(tag_problems) >= max_per_tag:
                     break
-            if len(tag_problems) >= max_per_tag:
-                break
 
-        recommendations.extend(tag_problems)
+            range_recs.extend(tag_problems)
 
-    return recommendations
+        all_range_recs[f"{lower}-{upper}"] = {
+            'tag_strengths': [{'tag': tag, 'score': score} for tag, score in tag_scores],
+            'suggestions': range_recs
+        }
+
+    return all_range_recs
+
 
 
 from django.http import JsonResponse
@@ -273,75 +344,150 @@ def ml_suggestions_view(request):
         handle = body.get('handle')
 
         submissions = get_user_submissions(handle)
-        tag_scores, avg_rating, solved_problems = analyze_user(submissions)
         problems = get_problemset()
-        recs = recommend_problems(tag_scores, avg_rating, problems, solved_problems)
-        tag_strengths = [{'tag': tag, 'score': score} for tag, score in tag_scores]
+        solved_problems = get_solved_problem_ids(submissions)
 
+        rating_ranges = [
+            (800, 1100),
+            (1200, 1400),
+            (1500, 1600),
+            (1600, 1900)
+        ]
 
-        return JsonResponse({'suggestions': recs,
-                             'tag_strengths': tag_strengths
-                             })
+        recs_by_range = recommend_problems_by_range(submissions, problems, solved_problems, rating_ranges)
+
+        return JsonResponse(recs_by_range)
 
     
-from django.conf import settings
-from django.core.mail import send_mail
+def get_solved_problem_ids(submissions):
+    solved = set()
+    for sub in submissions:
+        if sub.get('verdict') == 'OK' and 'problem' in sub:
+            prob = sub['problem']
+            solved.add(f"{prob['contestId']}/{prob['index']}")
+    return solved
+
+
+from django.contrib import messages
+from django.contrib.auth.models import User
+from django.db import transaction, IntegrityError
+from django.shortcuts import redirect, render
+from django.utils.http import urlsafe_base64_encode
+from django.utils.encoding import force_bytes
 from django.template.loader import render_to_string
-from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
-from django.utils.encoding import force_bytes, force_str
+from django.core.mail import EmailMessage
 from django.contrib.sites.shortcuts import get_current_site
 from django.contrib.auth.tokens import default_token_generator
 
+
 def handlesignup(request):
     if request.method == "POST":
-        uname = request.POST.get("username")
-        email = request.POST.get("email")
+        uname = (request.POST.get("username") or "").strip()
+        email = (request.POST.get("email") or "").strip().lower()
         password = request.POST.get("pass1")
         confirmpassword = request.POST.get("pass2")
 
-        # Basic empty check
+        # 1. Empty field check
         if not uname or not email or not password or not confirmpassword:
             messages.error(request, "All fields are required.")
             return redirect('handlesignup')
 
+        # 2. Password match
         if password != confirmpassword:
-            messages.warning(request, "Passwords do not match")
+            messages.warning(request, "Passwords do not match.")
             return redirect('handlesignup')
 
-        if User.objects.filter(username=uname,is_active=True).exists():
-            messages.info(request, "Username is already taken")
+        # 3. Username check
+        existing_username = User.objects.filter(username__iexact=uname).first()
+        if existing_username:
+            if not existing_username.is_active:
+                _send_activation_email(request, existing_username)
+                messages.info(request, "Inactive account exists. Activation email resent.")
+                return redirect('handlelogin')
+            messages.info(request, "Username is already taken.")
             return redirect('handlesignup')
 
-        if User.objects.filter(email=email,is_active=True).exists():
-            messages.info(request, "Email is already registered")
+        # 4. Email check
+        existing_email = User.objects.filter(email__iexact=email).first()
+        if existing_email:
+            if not existing_email.is_active:
+                _send_activation_email(request, existing_email)
+                messages.info(request, "Inactive account exists. Activation email resent.")
+                return redirect('handlelogin')
+            messages.info(request, "Email already registered.")
             return redirect('handlesignup')
 
-        # Create inactive user
-        user = User.objects.create_user(username=uname, email=email, password=password)
-        user.is_active = False
-        user.save()
-
-        # Send activation email
-        current_site = get_current_site(request)
-        subject = "Activate Your HAT Account"
-        message = render_to_string('activate_email.html', {
-            'user': user,
-            'domain': current_site.domain,
-            'uid': urlsafe_base64_encode(force_bytes(user.pk)),
-            'token': default_token_generator.make_token(user),
-        })
-
+        # 5. Create user and send activation
         try:
-            send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [email])
-            messages.success(request, "Please check your email to activate your account.")
-        except Exception as e:
-            messages.error(request, "Error sending activation email. Please try again.")
-            user.delete()  # Clean up created user
+            with transaction.atomic():
+                user = User.objects.create_user(username=uname, email=email, password=password)
+                user.is_active = False
+                user.save()
+
+                _send_activation_email(request, user)
+
+            messages.success(request, "Account created. Check your email for activation link.")
+            return redirect('handlelogin')
+
+        except IntegrityError:
+            messages.error(request, "User with this username or email already exists.")
             return redirect('handlesignup')
 
-        return redirect('handlelogin')
-    
     return render(request, 'signup.html')
+
+
+from django.core.mail import EmailMessage
+from django.template.loader import render_to_string
+from django.utils.http import urlsafe_base64_encode
+from django.utils.encoding import force_bytes
+from django.contrib.auth.tokens import default_token_generator
+from django.contrib.sites.shortcuts import get_current_site
+
+def _send_activation_email(request, user):
+    current_site = get_current_site(request)
+    uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
+    token = default_token_generator.make_token(user)
+
+    message = render_to_string('activate_email.html', {
+        'user': user,
+        'domain': current_site.domain,
+        'uidb64': uidb64,
+        'token': token,
+    })
+
+    email = EmailMessage(
+        subject='Activate your account',
+        body=message,
+        to=[user.email],
+    )
+    email.content_subtype = 'html'
+    email.send()
+
+
+
+from django.shortcuts import redirect, get_object_or_404
+from django.contrib.auth.models import User
+
+def activate_account(request, uidb64, token):
+    try:
+        uid = force_str(urlsafe_base64_decode(uidb64))
+        user = User.objects.get(pk=uid)
+    except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+        user = None
+
+    if user is not None and default_token_generator.check_token(user, token):
+        user.is_active = True
+        user.save()
+        messages.success(request, "Your account has been activated! You can now log in.")
+        return redirect('handlelogin')
+    else:
+        messages.error(request, "Activation link is invalid or has expired.")
+        return redirect('handlesignup')
+
+
+
+    
+
 
 def handlelogin(request):
     if request.method=="POST":
@@ -364,7 +510,126 @@ def handlelogout(request):
 
 
 
+# app/views.py
+import json
+import requests
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth.decorators import login_required
+from django.contrib import messages
+from django.http import JsonResponse, HttpResponseBadRequest
+from .models import Profile, Post, Tutorial, WeaknessSnapshot
+from .forms import ProfilePictureForm, PostForm, TutorialForm
+from .utils import get_user_submissions, analyze_user_submissions
 
+@login_required
+def profile(request):
+    # 1) Ensure Profile exists
+    Profile.objects.get_or_create(user=request.user)
 
+    # 2) Codeforces basic info (handle assumed same as username)
+    handle = request.user.username
+    cf_info = {}
+    cf_ratings = []
+    try:
+        r = requests.get(f"https://codeforces.com/api/user.info?handles={handle}", timeout=10)
+        data = r.json()
+        if data.get('status') == 'OK':
+            cf_info = data['result'][0]
+    except Exception:
+        cf_info = {}
 
+    try:
+        r2 = requests.get(f"https://codeforces.com/api/user.rating?handle={handle}", timeout=10)
+        rd = r2.json()
+        if rd.get('status') == 'OK':
+            cf_ratings = rd['result']
+    except Exception:
+        cf_ratings = []
 
+    # 3) user's posts & tutorials
+    posts = Post.objects.filter(author=request.user).order_by('-created_at')
+    tutorials = Tutorial.objects.filter(author=request.user).order_by('-created_at')
+
+    # 4) snapshots (history)
+    snapshots = WeaknessSnapshot.objects.filter(user=request.user).order_by('created_at')  # asc for chart
+
+    # forms
+    pform = ProfilePictureForm(instance=request.user.profile)
+    post_form = PostForm()
+    tutorial_form = TutorialForm()
+
+    return render(request, "profile.html", {
+        "cf_info": cf_info,
+        "cf_ratings": cf_ratings,
+        "posts": posts,
+        "tutorials": tutorials,
+        "snapshots": snapshots,
+        "pform": pform,
+        "post_form": post_form,
+        "tutorial_form": tutorial_form,
+    })
+
+@login_required
+def update_profile_picture(request):
+    if request.method != 'POST':
+        return HttpResponseBadRequest("POST required")
+    p = request.user.profile
+    form = ProfilePictureForm(request.POST, request.FILES, instance=p)
+    if form.is_valid():
+        form.save()
+        messages.success(request, "Profile updated.")
+    else:
+        messages.error(request, "Failed to update profile.")
+    return redirect('profile')
+
+@login_required
+def add_post(request):
+    if request.method != 'POST':
+        return HttpResponseBadRequest("POST required")
+    form = PostForm(request.POST, request.FILES)
+    if form.is_valid():
+        post = form.save(commit=False)
+        post.author = request.user
+        post.save()
+        messages.success(request, "Post added.")
+    else:
+        messages.error(request, "Failed to add post.")
+    return redirect('profile')
+
+@login_required
+def add_tutorial(request):
+    if request.method != 'POST':
+        return HttpResponseBadRequest("POST required")
+    form = TutorialForm(request.POST, request.FILES)
+    if form.is_valid():
+        tut = form.save(commit=False)
+        tut.author = request.user
+        tut.save()
+        messages.success(request, "Tutorial added.")
+    else:
+        messages.error(request, "Failed to add tutorial.")
+    return redirect('profile')
+
+@login_required
+def take_snapshot(request):
+    """
+    Trigger on-demand analysis: fetch CF submissions, analyze, save a WeaknessSnapshot.
+    Returns JSON (success + snapshot id).
+    """
+    handle = request.user.username
+    try:
+        subs = get_user_submissions(handle)
+        tag_scores, avg_rating, solved = analyze_user_submissions(subs)
+        # store as dict tag->score
+        tag_scores_dict = {t: score for t, score in tag_scores}
+        avg_weak = round(sum(tag_scores_dict.values()) / len(tag_scores_dict), 4) if tag_scores_dict else 0.0
+
+        snap = WeaknessSnapshot.objects.create(
+            user=request.user,
+            tag_scores=tag_scores_dict,
+            avg_weakness=avg_weak,
+            rating=avg_rating
+        )
+        return JsonResponse({"ok": True, "snapshot_id": snap.id})
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=500)

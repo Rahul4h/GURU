@@ -3,15 +3,27 @@
 
 {% block content %}
 <div class="container mx-auto py-10 px-4">
+  <div class="mt-6">
+  <h2 class="text-xl font-semibold mb-2">📌 Choose Rating Range</h2>
+  <div class="flex flex-wrap gap-2">
+    <button onclick="showRange('800-1100')" class="range-btn bg-blue-200 px-3 py-1 rounded">800-1100</button>
+    <button onclick="showRange('1200-1400')" class="range-btn bg-blue-200 px-3 py-1 rounded">1200-1400</button>
+    <button onclick="showRange('1500-1600')" class="range-btn bg-blue-200 px-3 py-1 rounded">1500-1600</button>
+    <button onclick="showRange('1600-1900')" class="range-btn bg-blue-200 px-3 py-1 rounded">1600-1900</button>
+  </div>
+</div>
+
   <h1 class="text-3xl font-bold mb-6 text-indigo-700">🧠 ML-Based Smart Suggestions</h1>
 
   <div class="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
     <input type="text" id="handleInput" placeholder="Enter your Codeforces handle"
            class="border p-2 w-full sm:w-96 rounded" />
 
-    <button onclick="getSuggestions()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded">
+    <button onclick="getSuggestions()" class="bg-indigo-600 hover:bg-indigo-700 text-dark px-4 py-2 rounded">
       Get Suggestions
     </button>
+
+
   </div>
 
   <div id="statusMessage" class="mt-4 text-gray-700"></div>
@@ -20,61 +32,58 @@
 </div>
 
 <script>
+  
+  let fullData = {};
+
   function getSuggestions() {
     const handle = document.getElementById('handleInput').value.trim();
     const status = document.getElementById('statusMessage');
-    const container = document.getElementById('suggestionResults');
-    const tagContainer = document.getElementById('tagStrengths');
-
-    container.innerHTML = '';
-    tagContainer.innerHTML = '';
-    status.textContent = '';
-
-    if (!handle) {
-      status.textContent = '⚠️ Please enter a Codeforces handle.';
-      return;
-    }
-
     status.textContent = '🔄 Fetching suggestions...';
 
     fetch('/api/suggest/', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ handle })
     })
     .then(res => res.json())
     .then(data => {
-      // Render tag strengths from weak to strong
-      if (data.tag_strengths && data.tag_strengths.length > 0) {
-        tagContainer.innerHTML = `
-          <h2 class="text-xl font-semibold mb-2">📊 Your Weak to Strong Topics</h2>
-          <ul class="list-disc list-inside text-sm space-y-1">
-            ${[...data.tag_strengths].map(t => `
-              <li><span class="font-medium">${t.tag}</span> — Weakness Score: ${t.score}</li>
-            `).join('')}
-          </ul>
-        `;
-      }
-
-      // Render suggested problems
-      if (data.suggestions && data.suggestions.length > 0) {
-        status.textContent = `✅ Found ${data.suggestions.length} recommended problems.`;
-        container.innerHTML = data.suggestions.map(p => `
-          <div class="bg-white p-4 rounded shadow border-l-4 border-blue-500">
-            <h3 class="text-lg font-semibold">${p.name}</h3>
-            <p class="text-sm text-gray-700">Tags: ${p.tags.join(', ')}</p>
-            <p class="text-sm text-gray-700">Recommended Rating: ${p.rating}</p>
-            <a href="${p.url}" class="text-indigo-600 underline" target="_blank">Solve Now →</a>
-          </div>
-        `).join('');
-      } else {
-        status.textContent = '❌ No suggestions found. Try another handle.';
-      }
+      fullData = data;
+      status.textContent = '✅ Select a rating range to view suggestions.';
     })
     .catch(err => {
       console.error(err);
       status.textContent = '❌ An error occurred while fetching suggestions.';
     });
   }
+
+  function showRange(rangeKey) {
+    const tagContainer = document.getElementById('tagStrengths');
+    const container = document.getElementById('suggestionResults');
+
+    if (!fullData[rangeKey]) {
+      container.innerHTML = '<p class="text-red-600">No data for this range.</p>';
+      return;
+    }
+
+    const { tag_strengths, suggestions } = fullData[rangeKey];
+
+    tagContainer.innerHTML = `
+      <h2 class="text-xl font-semibold mb-2">📊 Topics from Weak to Strong for ${rangeKey}</h2>
+      <ul class="list-disc list-inside text-sm space-y-1">
+        ${tag_strengths.map(t => `<li><span class="font-medium">${t.tag}</span> — Weak Score: ${t.score}</li>`).join('')}
+      </ul>
+    `;
+
+    container.innerHTML = suggestions.map(p => `
+      <div class="bg-white p-4 rounded shadow border-l-4 border-blue-500">
+        <h3 class="text-lg font-semibold">${p.name}</h3>
+        <p class="text-sm text-gray-700">Tags: ${p.tags.join(', ')}</p>
+        <p class="text-sm text-gray-700">Recommended Rating: ${p.rating}</p>
+        <a href="${p.url}" class="text-indigo-600 underline" target="_blank">Solve Now →</a>
+      </div>
+    `).join('');
+  }
 </script>
+
+
 {% endblock %}
