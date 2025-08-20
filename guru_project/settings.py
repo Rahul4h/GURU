@@ -161,7 +161,7 @@ import os
 SOCIAL_AUTH_GOOGLE_OAUTH2_KEY = os.getenv("GOOGLE_CLIENT_ID")
 SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 
-<<<<<<< HEAD
+
 
 
 #STATIC_URL = '/static/'
@@ -183,5 +183,5 @@ EMAIL_HOST_PASSWORD = 'chmp hnlx bmzl wvea' # Use the 16-char App Password
 DEFAULT_FROM_EMAIL = 'GURU@gmail.com'    # Sender email
 
 
-=======
->>>>>>> 2c366e21879bab2054441a2e55338432b084e95b
+
+
