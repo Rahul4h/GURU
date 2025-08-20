@@ -1,6 +1,6 @@
 # GURU Project
 
-GURU is a Django + ML project for Codeforces problem suggestions.
+GURU is a Django  project for Codeforces problem suggestions.
 
 ## Features
 - Google OAuth login
