@@ -15,7 +15,7 @@ from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
 from django.shortcuts import render, get_object_or_404, redirect
-from .models import Post,Comment, Reaction
+from .models import Post,Comment, Reaction,CommentReaction
 
 @login_required
 def blog_page(request):
@@ -23,33 +23,79 @@ def blog_page(request):
     return render(request, 'blog.html', {'posts': posts})
 
 
+# app/views.py
+
+
+
+
+
+@login_required
 def blog_detail(request, post_id):
     post = get_object_or_404(Post, id=post_id)
-    comments = post.comments.filter(parent__isnull=True).order_by("-created_at")
-    reactions = post.reactions.values("reaction_type").annotate(count=models.Count("id"))
+    # Fetch top-level comments only
+    comments = (
+        post.comments.filter(parent__isnull=True)
+        .prefetch_related("reactions", "replies__reactions", "replies__replies__reactions")
+        .order_by("-created_at")
+    )
+    post_reactions = post.reactions.values("reaction_type").annotate(count=models.Count("id"))
 
     if request.method == "POST":
+        # Add comment or reply
         if "comment" in request.POST:
+            parent_id = request.POST.get("parent_id")
+            parent_comment = Comment.objects.get(id=parent_id) if parent_id else None
             Comment.objects.create(
                 post=post,
                 user=request.user,
                 content=request.POST["comment"],
+                parent=parent_comment
             )
             return redirect("blog_detail", post_id=post.id)
 
-        if "reaction" in request.POST:
-            reaction_type = request.POST["reaction"]
-            reaction, created = Reaction.objects.update_or_create(
-                post=post, user=request.user,
+        # React to post
+        if "reaction_post" in request.POST:
+            reaction_type = request.POST["reaction_post"]
+            Reaction.objects.update_or_create(
+                post=post,
+                user=request.user,
                 defaults={"reaction_type": reaction_type},
             )
             return redirect("blog_detail", post_id=post.id)
 
+        # React to comment/reply
+        if "reaction_comment" in request.POST:
+            comment_id = request.POST.get("comment_id")
+            reaction_type = request.POST.get("reaction_comment")
+            comment = Comment.objects.get(id=comment_id)
+            CommentReaction.objects.update_or_create(
+                comment=comment,
+                user=request.user,
+                defaults={"reaction_type": reaction_type},
+            )
+            return redirect("blog_detail", post_id=post.id)
+
+    # Recursive helper to attach reaction counts
+    def add_reaction_counts(comment):
+        comment.reaction_counts = (
+            comment.reactions.values("reaction_type")
+            .annotate(count=models.Count("id"))
+        )
+        for reply in comment.replies.all():
+            add_reaction_counts(reply)
+
+    # Attach reactions to all comments & replies
+    for comment in comments:
+        add_reaction_counts(comment)
+
     return render(request, "blog_detail.html", {
         "post": post,
         "comments": comments,
-        "reactions": reactions,
+        "post_reactions": post_reactions,
     })
+
+
+
 
 @login_required
 def index(request):

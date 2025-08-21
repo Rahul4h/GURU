@@ -46,17 +46,15 @@ class WeaknessSnapshot(models.Model):
 
 
 
-class Post(models.Model):  # your existing one
+class Post(models.Model):
     title = models.CharField(max_length=200)
     content = models.TextField()
     image = models.ImageField(upload_to='posts/', null=True, blank=True)
-
     author = models.ForeignKey(User, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.title
-
 
 class Comment(models.Model):
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="comments")
@@ -70,7 +68,6 @@ class Comment(models.Model):
     def __str__(self):
         return f"Comment by {self.user.username} on {self.post.title}"
 
-
 class Reaction(models.Model):
     REACTION_CHOICES = [
         ("like", "Like"),
@@ -79,9 +76,7 @@ class Reaction(models.Model):
     ]
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="reactions")
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-   
-    reaction_type = models.CharField(max_length=20, choices=REACTION_CHOICES , default="like")
-
+    reaction_type = models.CharField(max_length=20, choices=REACTION_CHOICES, default="like")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -91,10 +86,24 @@ class Reaction(models.Model):
         return f"{self.user.username} {self.reaction_type} {self.post.title}"
 
 
+# --- New model for comment/reply reactions ---
+class CommentReaction(models.Model):
+    REACTION_CHOICES = [
+        ("like", "Like"),
+        ("love", "Love"),
+        ("dislike", "Dislike"),
+    ]
+    comment = models.ForeignKey(Comment, on_delete=models.CASCADE, related_name="reactions")
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    reaction_type = models.CharField(max_length=20, choices=REACTION_CHOICES, default="like")
+    created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        unique_together = ("comment", "user")  # one reaction per user per comment
 
+    def __str__(self):
+        return f"{self.user.username} {self.reaction_type} on comment {self.comment.id}"
 
-# core/models.py
 
 
 
