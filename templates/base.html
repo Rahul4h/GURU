@@ -12,8 +12,8 @@
       /* Navbar styles */
       .navbar {
         background-color: #fff;
-        border: 1px solid #000;
         box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+        padding: 0.5rem 1rem;
       }
 
       .navbar-brand {
@@ -21,6 +21,20 @@
         font-weight: 700;
         color: #000 !important;
         letter-spacing: 1px;
+      }
+
+      /* Logo at left-most corner */
+      .navbar .navbar-brand {
+        margin-right: 1rem;
+      }
+
+      /* Navbar links container with full border (four sides) */
+      .navbar-links-border {
+        border: 1px solid #000;
+        border-radius: 5px;
+        padding: 0.2rem 0.5rem;
+        display: flex;
+        align-items: center;
       }
 
       .nav-link {
@@ -72,62 +86,70 @@
       footer a:hover {
         color: #ccc;
       }
-      .footer-border {
-    width: 90%;         /* makes it shorter than full width */
-    max-width: 600px;   /* optional: limit max width */
-    height: 1px;        /* thin line */
-    background-color: black;
-    margin: 0 auto 8px; /* center horizontally, 8px space below */
-    border-radius: 1px; /* optional: slight rounding */
-}
 
+      .footer-border {
+        width: 90%;
+        max-width: 800px;
+        height: 1px;
+        background-color: black;
+        margin: 0 auto 8px;
+        border-radius: 1px;
+      }
     </style>
   </head>
   <body>
     <!-- Navbar -->
     <nav class="navbar navbar-expand-lg">
-      <div class="container">
-        <a class="navbar-brand d-flex align-items-center" href="/">
+      <div class="container d-flex align-items-center justify-content-between">
+        <!-- Logo -->
+        <a class="navbar-brand d-flex align-items-center me-3" href="/" style="margin-left:0;">
           <img src="{% static 'images/logoe.png' %}" alt="GURU Logo" style="height: 45px; margin-right: 10px;">
           GURU
         </a>
 
+        <!-- Navbar toggler for mobile -->
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#eduNavbar">
           <span class="navbar-toggler-icon"></span>
         </button>
 
+        <!-- Navbar links + auth -->
         <div class="collapse navbar-collapse" id="eduNavbar">
-          <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-            <li class="nav-item"><a class="nav-link" href="/profile">Profile</a></li>
-            <li class="nav-item"><a class="nav-link" href="/blog">Blog</a></li>
-            <li class="nav-item"><a class="nav-link" href="/tutorial">Tutorial</a></li>
-            <li class="nav-item"><a class="nav-link" href="/suggestions">Suggestions</a></li>
-            <li class="nav-item"><a class="nav-link" href="/contact">Help & Contact</a></li>
-            <li class="nav-item"><a class="nav-link" href="/about">About GURU</a></li>
-          </ul>
+          <div class="d-flex align-items-center w-100 justify-content-between">
+            <!-- Bordered links -->
+            <ul class="navbar-links-border navbar-nav me-3 mb-2 mb-lg-0">
+              <li class="nav-item"><a class="nav-link" href="/profile">Profile</a></li>
+              <li class="nav-item"><a class="nav-link" href="/blog">Blog</a></li>
+              <li class="nav-item"><a class="nav-link" href="/tutorial">Tutorial</a></li>
+              <li class="nav-item"><a class="nav-link" href="/suggestions">Suggestions</a></li>
+              <li class="nav-item"><a class="nav-link" href="/conprep">Contest Preparation</a></li>
+              <li class="nav-item"><a class="nav-link" href="/contact">Help & Contact</a></li>
+              <li class="nav-item"><a class="nav-link" href="/about">About GURU</a></li>
+            </ul>
 
-          <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
-            {% if request.user.is_authenticated %}
-              <li class="nav-item dropdown">
-                <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                  Welcome {{ request.user.username }}
-                </a>
-                <ul class="dropdown-menu dropdown-menu-end">
-                  <li><a class="dropdown-item" href="/logout">Logout</a></li>
-                </ul>
-              </li>
-            {% else %}
-              <li class="nav-item dropdown">
-                <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                  New User?
-                </a>
-                <ul class="dropdown-menu dropdown-menu-end">
-                  <li><a class="dropdown-item" href="/login">Login</a></li>
-                  <li><a class="dropdown-item" href="/signup">Signup</a></li>
-                </ul>
-              </li>
-            {% endif %}
-          </ul>
+            <!-- Auth links far right -->
+            <ul class="navbar-nav mb-2 mb-lg-0">
+              {% if request.user.is_authenticated %}
+                <li class="nav-item dropdown">
+                  <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                    Welcome {{ request.user.username }}
+                  </a>
+                  <ul class="dropdown-menu dropdown-menu-end">
+                    <li><a class="dropdown-item" href="/logout">Logout</a></li>
+                  </ul>
+                </li>
+              {% else %}
+                <li class="nav-item dropdown">
+                  <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                    New User?
+                  </a>
+                  <ul class="dropdown-menu dropdown-menu-end">
+                    <li><a class="dropdown-item" href="/login">Login</a></li>
+                    <li><a class="dropdown-item" href="/signup">Signup</a></li>
+                  </ul>
+                </li>
+              {% endif %}
+            </ul>
+          </div>
         </div>
       </div>
     </nav>
@@ -145,21 +167,16 @@
     </main>
 
     <!-- Footer -->
-    <!-- Footer -->
-<footer>
-  <!-- Short black border above footer -->
-  
-  <div class="footer-border"></div>
-
-  <div>
-    &copy; {{ current_year }} <a href="/">GURU.</a> Copyright 2025-2025 Rahul Ghosh. |
-    <a href="/about">About</a> |
-    <a href="/contact">Contact</a> |
-    <a href="/privacy">Privacy Policy</a> |
-    <a href="/terms">Terms of Service</a>|
-  </div>
-</footer>
-
+    <footer>
+      <div class="footer-border"></div>
+      <div>
+        &copy; {{ current_year }} <a href="/">GURU.</a> Copyright 2025-2025 Rahul Ghosh. |
+        <a href="/about">About</a> |
+        <a href="/contact">Contact</a> |
+        <a href="/privacy">Privacy Policy</a> |
+        <a href="/terms">Terms of Service</a>|
+      </div>
+    </footer>
 
     {% block extra_script %}{% endblock %}
 

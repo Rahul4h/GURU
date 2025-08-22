@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <div class="row">
+    <!-- Left: Contest Preparation -->
+    <div class="col-md-8">
+      <h2>Contest Preparation: {{ next_contest.name }}</h2>
+
+      {% for idx, data in prep_data.items %}
+        <div class="card mb-3 shadow-sm">
+          <div class="card-body">
+            <h4>Problem {{ idx }}</h4>
+            <p><b>Avg Rating:</b> {{ data.avg_rating }}</p>
+            <p><b>Tag Distribution:</b></p>
+            <ul>
+              {% for tag, percent in data.tags.items %}
+                <li>{{ tag }} - {{ percent }}%</li>
+              {% endfor %}
+            </ul>
+            <p><b>Practice Problems:</b></p>
+            <ul>
+              {% for p in data.problems %}
+                <li>
+                  <a href="{{ p.link }}" target="_blank">{{ p.name }}</a>
+                  ({{ p.rating }}) - {{ p.tags|join:", " }}
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <!-- Right: Upcoming Contests -->
+    <div class="col-md-4">
+      <h3>Upcoming Contests</h3>
+      <ul class="list-group">
+        {% for c in upcoming %}
+          <li class="list-group-item">
+            <b>{{ c.name }}</b><br>
+            Starts: {{ c.startTimeSeconds|date:"Y-m-d H:i:s" }}
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

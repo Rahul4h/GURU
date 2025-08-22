@@ -197,37 +197,7 @@ def analyze_handle(request):
 def suggestions_page(request):
     return render(request, 'suggestions.html')
 
-def get_ml_suggestions(request):
-    if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-            handle = data.get('handle')
 
-            # 👉 Example: Simulate ML logic (replace with your real model)
-            problem_suggestions = [
-                {
-                    "title": "Helpful Maths",
-                    "tags": ["implementation"],
-                    "rating": 800,
-                    "url": "https://codeforces.com/problemset/problem/339/A"
-                },
-                {
-                    "title": "Way Too Long Words",
-                    "tags": ["strings"],
-                    "rating": 800,
-                    "url": "https://codeforces.com/problemset/problem/71/A"
-                },
-                {
-                    "title": "Next Round",
-                    "tags": ["implementation"],
-                    "rating": 800,
-                    "url": "https://codeforces.com/problemset/problem/158/A"
-                }
-            ]
-
-            return JsonResponse({'suggestions': problem_suggestions})
-        except Exception as e:
-            return JsonResponse({'error': str(e)}, status=400)
 
 import requests
 
@@ -679,3 +649,184 @@ def take_snapshot(request):
         return JsonResponse({"ok": True, "snapshot_id": snap.id})
     except Exception as e:
         return JsonResponse({"ok": False, "error": str(e)}, status=500)
+
+
+
+
+# -----------------------------
+# Utility: Safe JSON request
+# -----------------------------
+from collections import defaultdict, Counter
+import requests
+from django.shortcuts import render
+from django.contrib.auth.decorators import login_required
+
+# -----------------------------
+# Safe JSON fetch
+# -----------------------------
+def safe_get_json(url, timeout=10):
+    try:
+        res = requests.get(url, timeout=timeout)
+        res.raise_for_status()
+        return res.json()
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️ Request failed: {e} for URL: {url}")
+        return None
+    except ValueError:
+        print(f"⚠️ JSON decode failed for URL: {url}")
+        return None
+
+# -----------------------------
+# Fetch all contests
+# -----------------------------
+def get_contests():
+    url = "https://codeforces.com/api/contest.list?gym=false"
+    data = safe_get_json(url)
+    if not data or data.get("status") != "OK":
+        return []
+    return data["result"]
+
+# -----------------------------
+# Analyze past contests for tags & ratings
+# -----------------------------
+def analyze_past_contests(contests, contest_type, max_contests=30):
+    tag_stats = defaultdict(Counter)  # index -> Counter(tags)
+    rating_stats = defaultdict(list)  # index -> list of ratings
+    counted = 0
+
+    for contest in contests:
+        if contest_type not in contest.get("name", ""):
+           continue
+    # Skip contests that have not started or are unrated
+        if contest.get("phase") != "FINISHED":
+            continue
+        if contest_type not in contest.get("name", ""):
+            continue
+        if counted >= max_contests:
+            break
+
+        cid = contest.get("id")
+        standings_url = f"https://codeforces.com/api/contest.standings?contestId={cid}&from=1&count=1"
+        res = safe_get_json(standings_url)
+        if not res or res.get("status") != "OK":
+            continue  # skip invalid contest
+
+        problems = res.get("result", {}).get("problems", [])
+        for p in problems:
+            try:
+                idx = p["index"][0]  # "A", "B", "C"...
+                for tag in p.get("tags", []):
+                    tag_stats[idx][tag] += 1
+                if "rating" in p:
+                    rating_stats[idx].append(p["rating"])
+            except Exception as e:
+                print(f"⚠️ Problem processing failed: {e} in contest {cid}")
+                continue
+
+        counted += 1
+
+    # Calculate most common tags and average rating per index
+    percentages = {}
+    for idx, counter in tag_stats.items():
+        total = sum(counter.values())
+        percentages[idx] = {tag: round(cnt * 100 / total, 2) for tag, cnt in counter.items()}
+
+    avg_ratings = {idx: round(sum(rating_stats[idx]) / len(rating_stats[idx]), 0)
+                   for idx in rating_stats if rating_stats[idx]}
+
+    return percentages, avg_ratings
+
+# -----------------------------
+# Fetch problems by tag & rating, skipping solved
+# -----------------------------
+def fetch_problems(tag, rating, solved_set=None, limit=10):
+    url = "https://codeforces.com/api/problemset.problems"
+    data = safe_get_json(url)
+    problems = []
+    if not data or "result" not in data:
+        return problems
+
+    for p in data["result"].get("problems", []):
+        if "rating" not in p or tag not in p.get("tags", []):
+            continue
+        if abs(p["rating"] - rating) > 200:
+            continue
+
+        prob_id = f"{p['contestId']}/{p['index']}"
+        if solved_set and prob_id in solved_set:
+            continue
+
+        problems.append({
+            "name": p["name"],
+            "link": f"https://codeforces.com/contest/{p['contestId']}/problem/{p['index']}",
+            "rating": p["rating"],
+            "tags": p["tags"]
+        })
+        if len(problems) >= limit:
+            break
+
+    return problems
+
+# -----------------------------
+# Get user submissions
+# -----------------------------
+
+
+# -----------------------------
+# Get solved problem IDs
+# -----------------------------
+
+
+# -----------------------------
+# Main view: Contest preparation
+# -----------------------------
+@login_required
+def conprep_page(request):
+    contests = get_contests()
+    handle = request.user.username
+    submissions = get_user_submissions(handle)
+    solved_set = get_solved_problem_ids(submissions)
+
+    # Upcoming contests
+    upcoming = [c for c in contests if c.get("phase") == "BEFORE"]
+    upcoming = sorted(upcoming, key=lambda x: x.get("startTimeSeconds", 0))
+    next_contest = upcoming[0] if upcoming else None
+
+    prep_data = {}
+    if next_contest:
+        # Determine contest type
+        name = next_contest.get("name", "")
+        if "Div. 2" in name:
+            contest_type = "Div. 2"
+        elif "Div. 3" in name:
+            contest_type = "Div. 3"
+        elif "Educational" in name:
+            contest_type = "Educational"
+        elif "Div. 1" in name:
+            contest_type = "Div. 1"
+        else:
+            contest_type = "Global"
+
+        # Analyze past contests
+        percentages, avg_ratings = analyze_past_contests(contests, contest_type)
+
+        # Prepare problems by index
+        for idx, tag_data in percentages.items():
+            prep_data[idx] = {
+                "tags": tag_data,
+                "avg_rating": avg_ratings.get(idx, 1200),
+                "problems": []
+            }
+
+            # Take top 1-2 most frequent tags
+            top_tags = sorted(tag_data.items(), key=lambda x: -x[1])[:2]
+            for tag, _ in top_tags:
+                rating = avg_ratings.get(idx, 1200)
+                problems = fetch_problems(tag, rating, solved_set=solved_set, limit=5)
+                prep_data[idx]["problems"].extend(problems)
+
+    return render(request, "contest_prep.html", {
+        "upcoming": upcoming[:5],
+        "next_contest": next_contest,
+        "prep_data": prep_data
+    })

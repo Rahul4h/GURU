@@ -19,6 +19,7 @@ urlpatterns = [
     path('activate/<uidb64>/<token>/', views.activate_account, name='activate'),
     path('blog/', views.blog_page, name='blog_page'),
     path("blog/<int:post_id>/", views.blog_detail, name="blog_detail"),
+    path('conprep/',views.conprep_page, name='conprep_page'),
     
 
  # new blog page
