@@ -36,6 +36,9 @@ It analyzes a user’s Codeforces profile, generates rating charts, and provides
   - Compare performance with previous performance of that users
   - Track ratings and problem counts
 
+Contest Preparation:
+   -A performer can prepare himself for upcomming contest by seeing average rating of problem that comes for a particular area ,solving previous contest problems .
+
 ---
 
 ## 🏗️ Tech Stack
