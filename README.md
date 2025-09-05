@@ -74,3 +74,9 @@ Add client ID & secret in Django settings (settings.py)
 
 5.Run the server
 python manage.py runserver
+
+👨‍💻 Author
+
+Rahul Ghosh
+💼 Django & FastAPI Developer
+
