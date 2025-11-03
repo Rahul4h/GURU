@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="chat-container">
+    <h3>Contact / Live Chat</h3>
+    <div id="chat-log" style="height:300px; overflow:auto; border:1px solid #ccc; padding:10px;"></div>
+    <input id="chat-message-input" type="text" size="50" placeholder="Type your message..." />
+    <button id="chat-message-submit">Send</button>
+</div>
+
+<script>
+    const chatSocket = new WebSocket(
+        'ws://' + window.location.host + '/ws/contact/'
+    );
+    chatSocket.onopen = function(e) {
+    console.log('WebSocket connected ✅');
+};
+
+chatSocket.onclose = function(e) {
+    console.log('WebSocket disconnected ❌');
+};
+
+chatSocket.onerror = function(e) {
+    console.error('WebSocket error:', e);
+};
+    chatSocket.onmessage = function(e) {
+        const data = JSON.parse(e.data);
+        document.querySelector('#chat-log').innerHTML += `<p><b>${data.username}:</b> ${data.message}</p>`;
+    };
+
+    document.querySelector('#chat-message-submit').onclick = function() {
+        const messageInput = document.querySelector('#chat-message-input');
+        const message = messageInput.value;
+        chatSocket.send(JSON.stringify({'message': message}));
+        messageInput.value = '';
+    };
+</script>
+{% endblock %}

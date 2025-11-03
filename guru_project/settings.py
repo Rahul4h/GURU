@@ -11,7 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
-
+import os
 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -27,18 +27,16 @@ SECRET_KEY = 'django-insecure-p2khm9v)24ykdsy$p@cz!_%-l_1z65r@t-@7z(bb_4fk*5$l&a
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
 
 
 # Application definition
 
 INSTALLED_APPS = [
+    'channels',
     'core',
-    'django.contrib.sites',
-    'allauth',
-    'allauth.account',
-    'allauth.socialaccount',
-    'allauth.socialaccount.providers.google',
+    
+    
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -48,6 +46,7 @@ INSTALLED_APPS = [
     
 ]
 
+
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -56,7 +55,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'allauth.account.middleware.AccountMiddleware',
+    
+    
 ]
 
 ROOT_URLCONF = 'guru_project.urls'
@@ -64,7 +64,7 @@ ROOT_URLCONF = 'guru_project.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR/'templates'],
+        'DIRS': [os.path.join(BASE_DIR/'templates')],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -76,7 +76,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'guru_project.wsgi.application'
+#WSGI_APPLICATION = 'guru_project.wsgi.application'
 
 
 # Database
@@ -84,10 +84,17 @@ WSGI_APPLICATION = 'guru_project.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'guru_db',       # the database name you created
+        'USER': 'guru_user',     # the user you created
+        'PASSWORD': 'mypassword',# the password you set
+        'HOST': 'localhost',
+        'PORT': '5432',
     }
 }
+
+
+
 
 
 # Password validation
@@ -136,32 +143,15 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend',
     
-    'allauth.account.auth_backends.AuthenticationBackend',
+    
 ]
-SITE_ID = 1
 
-LOGIN_URL = '/accounts/login/'
+
+
+#LOGIN_REDIRECT_URL = '/'          # redirect after login
+LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/'
-ACCOUNT_LOGOUT_REDIRECT_URL = '/accounts/login/'
-
-ACCOUNT_AUTHENTICATION_METHOD = 'username_email'
-ACCOUNT_EMAIL_REQUIRED = True
-ACCOUNT_EMAIL_VERIFICATION = 'none'  # You can change to 'mandatory' later
-
-SOCIALACCOUNT_PROVIDERS = {
-    'google': {
-        'SCOPE': ['profile', 'email'],
-        'AUTH_PARAMS': {'access_type': 'online'},
-        'OAUTH_PKCE_ENABLED': True,
-    }
-}
-
-import os
-
-SOCIAL_AUTH_GOOGLE_OAUTH2_KEY = os.getenv("GOOGLE_CLIENT_ID")
-SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
-
-
+LOGOUT_REDIRECT_URL = '/'
 
 
 #STATIC_URL = '/static/'
@@ -178,10 +168,24 @@ EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'rahul255gh68@gmail.com'       # Replace with your Gmail
-EMAIL_HOST_PASSWORD = 'chmp hnlx bmzl wvea' # Use the 16-char App Password
-DEFAULT_FROM_EMAIL = 'GURU@gmail.com'    # Sender email
+EMAIL_HOST_USER = 'rahul255gh68@gmail.com'      # your Gmail address
+EMAIL_HOST_PASSWORD = 'xlau qntl lsmh qqoo'
+  # the app password you copied
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "unique-snowflake",
+    }
+}
+
+ASGI_APPLICATION = "guru_project.asgi.application"
 
 
-
-
+CHANNEL_LAYERS ={
+    'default' : {
+        'BACKEND' : 'channels.layers.InMemoryChannelLayer',
+        
+    },
+}

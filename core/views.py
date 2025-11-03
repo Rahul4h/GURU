@@ -16,6 +16,9 @@ from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
 from django.shortcuts import render, get_object_or_404, redirect
 from .models import Post,Comment, Reaction,CommentReaction
+import requests, time
+from django.core.cache import cache  # ✅ add this
+
 
 @login_required
 def blog_page(request):
@@ -26,7 +29,10 @@ def blog_page(request):
 # app/views.py
 
 
+from django.shortcuts import render
 
+def contact_page(request):
+    return render(request, 'contact.html')
 
 
 @login_required
@@ -384,107 +390,66 @@ def get_solved_problem_ids(submissions):
     return solved
 
 
-from django.contrib import messages
+# ==========================
+# Django Authentication Views
+# ==========================
+
+
+
+# =====================================================
+# 1️⃣ SIGNUP VIEW — handles user creation & email verify
+# =====================================================
 from django.contrib.auth.models import User
-from django.db import transaction, IntegrityError
-from django.shortcuts import redirect, render
-from django.utils.http import urlsafe_base64_encode
-from django.utils.encoding import force_bytes
-from django.template.loader import render_to_string
-from django.core.mail import EmailMessage
-from django.contrib.sites.shortcuts import get_current_site
+from django.contrib import messages
+from django.contrib.auth import authenticate, login, logout
+from django.shortcuts import render, redirect
+from django.core.mail import send_mail
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.utils.encoding import force_bytes, force_str
 from django.contrib.auth.tokens import default_token_generator
+from django.conf import settings
 
+# --- Signup ---
+def signup_view(request):
+    if request.method == 'POST':
+        username = request.POST['username']
+        email = request.POST['email']
+        password = request.POST['password']
+        confirm = request.POST['confirm']
 
-def handlesignup(request):
-    if request.method == "POST":
-        uname = (request.POST.get("username") or "").strip()
-        email = (request.POST.get("email") or "").strip().lower()
-        password = request.POST.get("pass1")
-        confirmpassword = request.POST.get("pass2")
+        if password != confirm:
+            messages.error(request, 'Passwords do not match.')
+            return redirect('signup')
 
-        # 1. Empty field check
-        if not uname or not email or not password or not confirmpassword:
-            messages.error(request, "All fields are required.")
-            return redirect('handlesignup')
+        if User.objects.filter(username=username).exists():
+            messages.error(request, 'Username already taken.')
+            return redirect('signup')
 
-        # 2. Password match
-        if password != confirmpassword:
-            messages.warning(request, "Passwords do not match.")
-            return redirect('handlesignup')
+        if User.objects.filter(email=email).exists():
+            messages.error(request, 'Email already registered.')
+            return redirect('signup')
 
-        # 3. Username check
-        existing_username = User.objects.filter(username__iexact=uname).first()
-        if existing_username:
-            if not existing_username.is_active:
-                _send_activation_email(request, existing_username)
-                messages.info(request, "Inactive account exists. Activation email resent.")
-                return redirect('handlelogin')
-            messages.info(request, "Username is already taken.")
-            return redirect('handlesignup')
+        user = User.objects.create_user(username=username, email=email, password=password)
+        user.is_active = False  # Deactivate until email verified
+        user.save()
 
-        # 4. Email check
-        existing_email = User.objects.filter(email__iexact=email).first()
-        if existing_email:
-            if not existing_email.is_active:
-                _send_activation_email(request, existing_email)
-                messages.info(request, "Inactive account exists. Activation email resent.")
-                return redirect('handlelogin')
-            messages.info(request, "Email already registered.")
-            return redirect('handlesignup')
+        # Generate email verification link
+        token = default_token_generator.make_token(user)
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        verify_url = f"http://127.0.0.1:8000/verify/{uid}/{token}/"
 
-        # 5. Create user and send activation
-        try:
-            with transaction.atomic():
-                user = User.objects.create_user(username=uname, email=email, password=password)
-                user.is_active = False
-                user.save()
+        subject = "Verify your email - GURU"
+        message = f"Hello {username},\n\nPlease verify your email by clicking the link below:\n{verify_url}\n\nThank you!"
+        send_mail(subject, message, settings.EMAIL_HOST_USER, [email])
 
-                _send_activation_email(request, user)
-
-            messages.success(request, "Account created. Check your email for activation link.")
-            return redirect('handlelogin')
-
-        except IntegrityError:
-            messages.error(request, "User with this username or email already exists.")
-            return redirect('handlesignup')
+        messages.success(request, 'Verification email sent! Please check your inbox.')
+        return redirect('login')
 
     return render(request, 'signup.html')
 
 
-from django.core.mail import EmailMessage
-from django.template.loader import render_to_string
-from django.utils.http import urlsafe_base64_encode
-from django.utils.encoding import force_bytes
-from django.contrib.auth.tokens import default_token_generator
-from django.contrib.sites.shortcuts import get_current_site
-
-def _send_activation_email(request, user):
-    current_site = get_current_site(request)
-    uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
-    token = default_token_generator.make_token(user)
-
-    message = render_to_string('activate_email.html', {
-        'user': user,
-        'domain': current_site.domain,
-        'uidb64': uidb64,
-        'token': token,
-    })
-
-    email = EmailMessage(
-        subject='Activate your account',
-        body=message,
-        to=[user.email],
-    )
-    email.content_subtype = 'html'
-    email.send()
-
-
-
-from django.shortcuts import redirect, get_object_or_404
-from django.contrib.auth.models import User
-
-def activate_account(request, uidb64, token):
+# --- Email Verification ---
+def verify_email(request, uidb64, token):
     try:
         uid = force_str(urlsafe_base64_decode(uidb64))
         user = User.objects.get(pk=uid)
@@ -494,35 +459,42 @@ def activate_account(request, uidb64, token):
     if user is not None and default_token_generator.check_token(user, token):
         user.is_active = True
         user.save()
-        messages.success(request, "Your account has been activated! You can now log in.")
-        return redirect('handlelogin')
+        messages.success(request, 'Email verified successfully! You can now log in.')
+        return redirect('login')
     else:
-        messages.error(request, "Activation link is invalid or has expired.")
-        return redirect('handlesignup')
+        return render(request, 'email_verification_failed.html')
 
 
-
-    
-
-
-def handlelogin(request):
-    if request.method=="POST":
-        uname=request.POST.get("username")
-        pass1=request.POST.get("pass1")
-        myuser=authenticate(username=uname,password=pass1)
-        if myuser is not None:
-            login(request,myuser)
-            messages.success(request,"login success")
-            return redirect('/')
+# --- Login ---
+def login_view(request):
+    if request.method == 'POST':
+        username = request.POST['username']
+        password = request.POST['password']
+        user = authenticate(request, username=username, password=password)
+        if user is not None:
+            if user.is_active:
+                login(request, user)
+                messages.success(request, f'Welcome {username}!')
+                return redirect('index')
+            else:
+                messages.error(request, 'Please verify your email first.')
+                return redirect('login')
         else:
-            messages.error(request,"invalid")
-            return redirect('/login')
-    return render(request,'login.html')
+            messages.error(request, 'Invalid credentials.')
+            return redirect('login')
+    return render(request, 'login.html')
 
-def handlelogout(request):
+
+# --- Logout ---
+def logout_view(request):
     logout(request)
-    messages.info(request,"logout success")
-    return redirect('/login')
+    messages.success(request, 'You have been logged out.')
+    return redirect('login')
+
+
+
+
+
 
 
 
@@ -680,41 +652,49 @@ def safe_get_json(url, timeout=10):
 # Fetch all contests
 # -----------------------------
 def get_contests():
-    url = "https://codeforces.com/api/contest.list?gym=false"
-    data = safe_get_json(url)
-    if not data or data.get("status") != "OK":
-        return []
-    return data["result"]
+    key = "cf_contests"
+    contests = cache.get(key)
+    if contests is None:
+        url = "https://codeforces.com/api/contest.list?gym=false"
+        data = safe_get_json(url)
+        if not data or data.get("status") != "OK":
+            return []
+        contests = data["result"]
+        cache.set(key, contests, timeout=3600)  # cache 1h
+    return contests
 
 # -----------------------------
 # Analyze past contests for tags & ratings
 # -----------------------------
 def analyze_past_contests(contests, contest_type, max_contests=30):
-    tag_stats = defaultdict(Counter)  # index -> Counter(tags)
-    rating_stats = defaultdict(list)  # index -> list of ratings
+    key = f"cf_analysis_{contest_type}"
+    cached = cache.get(key)
+    if cached:
+        return cached
+
+    tag_stats = defaultdict(Counter)
+    rating_stats = defaultdict(list)
     counted = 0
 
     for contest in contests:
         if contest_type not in contest.get("name", ""):
-           continue
-    # Skip contests that have not started or are unrated
-        if contest.get("phase") != "FINISHED":
             continue
-        if contest_type not in contest.get("name", ""):
+        if contest.get("phase") != "FINISHED":
             continue
         if counted >= max_contests:
             break
 
         cid = contest.get("id")
         standings_url = f"https://codeforces.com/api/contest.standings?contestId={cid}&from=1&count=1"
+
         res = safe_get_json(standings_url)
         if not res or res.get("status") != "OK":
-            continue  # skip invalid contest
+            continue
 
-        problems = res.get("result", {}).get("problems", [])
+        problems = res["result"].get("problems", [])
         for p in problems:
             try:
-                idx = p["index"][0]  # "A", "B", "C"...
+                idx = p["index"][0]
                 for tag in p.get("tags", []):
                     tag_stats[idx][tag] += 1
                 if "rating" in p:
@@ -725,57 +705,54 @@ def analyze_past_contests(contests, contest_type, max_contests=30):
 
         counted += 1
 
-    # Calculate most common tags and average rating per index
     percentages = {}
     for idx, counter in tag_stats.items():
         total = sum(counter.values())
-        percentages[idx] = {tag: round(cnt * 100 / total, 2) for tag, cnt in counter.items()}
+        percentages[idx] = {tag: round(cnt * 100 / total, 2)
+                            for tag, cnt in counter.items()}
 
     avg_ratings = {idx: round(sum(rating_stats[idx]) / len(rating_stats[idx]), 0)
                    for idx in rating_stats if rating_stats[idx]}
 
-    return percentages, avg_ratings
+    result = (percentages, avg_ratings)
+    cache.set(key, result, timeout=21600)  # cache 6h
+    return result
 
 # -----------------------------
-# Fetch problems by tag & rating, skipping solved
+# Fetch problems by tag & rating, skipping solved (cached 24h)
 # -----------------------------
 def fetch_problems(tag, rating, solved_set=None, limit=10):
-    url = "https://codeforces.com/api/problemset.problems"
-    data = safe_get_json(url)
-    problems = []
-    if not data or "result" not in data:
-        return problems
+    key = f"cf_problems_{tag}_{rating}"
+    problems = cache.get(key)
+    if problems is None:
+        url = "https://codeforces.com/api/problemset.problems"
+        data = safe_get_json(url)
+        problems = []
+        if not data or "result" not in data:
+            return problems
 
-    for p in data["result"].get("problems", []):
-        if "rating" not in p or tag not in p.get("tags", []):
-            continue
-        if abs(p["rating"] - rating) > 200:
-            continue
+        for p in data["result"].get("problems", []):
+            if "rating" not in p or tag not in p.get("tags", []):
+                continue
+            if abs(p["rating"] - rating) > 200:
+                continue
 
-        prob_id = f"{p['contestId']}/{p['index']}"
-        if solved_set and prob_id in solved_set:
-            continue
+            prob_id = f"{p['contestId']}/{p['index']}"
+            if solved_set and prob_id in solved_set:
+                continue
 
-        problems.append({
-            "name": p["name"],
-            "link": f"https://codeforces.com/contest/{p['contestId']}/problem/{p['index']}",
-            "rating": p["rating"],
-            "tags": p["tags"]
-        })
-        if len(problems) >= limit:
-            break
+            problems.append({
+                "name": p["name"],
+                "link": f"https://codeforces.com/contest/{p['contestId']}/problem/{p['index']}",
+                "rating": p["rating"],
+                "tags": p["tags"]
+            })
+            if len(problems) >= limit:
+                break
+
+        cache.set(key, problems, timeout=86400)  # cache 24h
 
     return problems
-
-# -----------------------------
-# Get user submissions
-# -----------------------------
-
-
-# -----------------------------
-# Get solved problem IDs
-# -----------------------------
-
 
 # -----------------------------
 # Main view: Contest preparation
@@ -804,6 +781,8 @@ def conprep_page(request):
             contest_type = "Educational"
         elif "Div. 1" in name:
             contest_type = "Div. 1"
+        elif "Div. 4" in name:
+            contest_type = "Div. 4"
         else:
             contest_type = "Global"
 
@@ -818,7 +797,6 @@ def conprep_page(request):
                 "problems": []
             }
 
-            # Take top 1-2 most frequent tags
             top_tags = sorted(tag_data.items(), key=lambda x: -x[1])[:2]
             for tag, _ in top_tags:
                 rating = avg_ratings.get(idx, 1200)

@@ -2,29 +2,50 @@
 {% block title %}Home | GURU{% endblock %}
 
 {% block content %}
-<div class="min-h-screen flex items-start justify-center p-4">
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-6xl">
+<div class="min-h-screen p-4 grid  grid-cols-3 gap-4">
 
-  <!-- LEFT: Form -->
-  <div class="bg-white rounded-2xl shadow-lg p-6 space-y-6">
-    <p class="text-center text-gray-600">Get personalized Codeforces insights based on your handle.</p>
+  <!-- Column 1: Form + Result -->
+  <div class="flex flex-col md:flex-row gap-4">
+    <!-- Form -->
+    <div class="bg-white rounded-2xl shadow-lg p-4">
+      <p class="text-center text-gray-600">
+        Get personalized Codeforces insights based on your handle.
+      </p>
+      <form id="guruForm" class="space-y-2">
+        <input type="text" id="handle" name="handle" placeholder="Enter Codeforces handle"
+          class="w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" required />
+        <button type="submit"
+          class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1 px-2 rounded-lg transition duration-200">
+          Get Insights
+        </button>
+      </form>
+    </div>
 
-    <form id="guruForm" class="space-y-4">
-      <input type="text" id="handle" name="handle" placeholder="Enter Codeforces handle"
-        class="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" required />
-      <button type="submit"
-        class="w-full bg-blue-600 hover:bg-blue-700 text-dark font-semibold py-2 px-4 rounded-lg transition duration-200">
-        Get Insights
-      </button>
-    </form>
+    <!-- Result -->
+    <div id="result" class="bg-white rounded-2xl shadow-lg p-4 overflow-auto max-h-[600px] hidden">
+      <!-- Fetched data goes here -->
+    </div>
   </div>
 
-  <!-- RIGHT: Fetched Profile + Chart + Stats -->
-  <div id="result" class="bg-white rounded-2xl shadow-lg p-6 text-sm text-gray-700 hidden">
-    <!-- Fetched data goes here -->
+  <!-- Column 2: Tutorials -->
+  <div class="bg-white rounded-2xl shadow-lg p-4">
+    <h2 class="text-lg font-semibold text-gray-700 mb-2">📘 Tutorials</h2>
+    <ul class="list-disc list-inside text-gray-600 space-y-1">
+      <li><a href="#" class="text-blue-600 hover:underline">How to start with Codeforces</a></li>
+      <li><a href="#" class="text-blue-600 hover:underline">Understanding problem tags</a></li>
+      <li><a href="#" class="text-blue-600 hover:underline">Improving rating efficiently</a></li>
+    </ul>
   </div>
 
-</div>
+  <!-- Column 3: Latest Contest Alerts -->
+  <div class="bg-white rounded-2xl shadow-lg p-4">
+    <h2 class="text-lg font-semibold text-gray-700 mb-2">⚡ Latest Contest Alerts</h2>
+    <ul class="list-disc list-inside text-gray-600 space-y-1">
+      <li><span class="font-semibold">Codeforces Round 959 (Div. 2)</span> — Aug 25, 2025, 20:05 UTC</li>
+      <li><span class="font-semibold">Educational Round 176</span> — Aug 30, 2025, 17:35 UTC</li>
+      <li><span class="font-semibold">Codeforces Global Round 32</span> — Sep 5, 2025, 19:00 UTC</li>
+    </ul>
+  </div>
 
 </div>
 {% endblock %}
@@ -40,7 +61,7 @@
     const handle = document.getElementById("handle").value;
 
     resultDiv.classList.remove("hidden");
-    resultDiv.innerText = "Analyzing... Please wait.";
+    resultDiv.innerHTML = "<p>Analyzing... Please wait.</p>";
 
     const response = await fetch("/analyze/", {
       method: "POST",
@@ -71,32 +92,31 @@
         <li>1600–1899: ${diff["1600_1899"] || 0}</li>
       `;
 
-      // Inject everything in one go
+      // Result content
       resultDiv.innerHTML = `
-        <div class="flex items-center space-x-4 mb-4">
-          <img src="${data.avatar}" alt="avatar" class="w-12 h-12 rounded-full border" />
-          <div>
-            <p class="font-bold">${data.handle}</p>
-            <p>Rank: ${data.rank} | Rating: ${data.rating}</p>
-            <p>Max Rank: ${data.maxRank} | Max Rating: ${data.maxRating}</p>
+        <div class="flex flex-col gap-4">
+          <div class="flex items-center space-x-4">
+            <img src="${data.avatar}" alt="avatar" class="w-12 h-12 rounded-full border" />
+            <div>
+              <p class="font-bold">${data.handle}</p>
+              <p>Rank: ${data.rank} | Rating: ${data.rating}</p>
+              <p>Max Rank: ${data.maxRank} | Max Rating: ${data.maxRating}</p>
+            </div>
           </div>
-        </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
+          <div class="grid grid-cols-1 gap-4">
             <canvas id="ratingChart" height="200"></canvas>
-          </div>
-          <div>
-            <h3 class="text-md font-semibold text-gray-700">Tags (Best to Worst):</h3>
-            <ul class="list-disc list-inside text-gray-600 space-y-1">${tagItems}</ul>
+            <div>
+              <h3 class="text-md font-semibold text-gray-700">Tags (Best to Worst):</h3>
+              <ul class="list-disc list-inside text-gray-600 space-y-1">${tagItems}</ul>
 
-            <h3 class="text-md font-semibold text-gray-700 mt-4">Problems by Difficulty:</h3>
-            <ul class="list-disc list-inside text-gray-600 space-y-1">${difficultyItems}</ul>
+              <h3 class="text-md font-semibold text-gray-700 mt-4">Problems by Difficulty:</h3>
+              <ul class="list-disc list-inside text-gray-600 space-y-1">${difficultyItems}</ul>
+            </div>
           </div>
         </div>
       `;
 
-      // Render Chart
       const ctx = document.getElementById('ratingChart').getContext('2d');
       const labels = data.ratingHistory.map(d => new Date(d.timestamp * 1000).toLocaleDateString());
       const ratings = data.ratingHistory.map(d => d.rating);
@@ -121,14 +141,12 @@
             legend: { display: true },
             title: { display: true, text: 'Codeforces Rating History' }
           },
-          scales: {
-            y: { beginAtZero: false }
-          }
+          scales: { y: { beginAtZero: false } }
         }
       });
 
     } else {
-      resultDiv.innerText = "Error: " + (data.error || "Something went wrong.");
+      resultDiv.innerHTML = "<p class='text-red-500'>Error: " + (data.error || "Something went wrong.") + "</p>";
     }
   });
 
