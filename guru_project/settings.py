@@ -85,13 +85,15 @@ TEMPLATES = [
 
 
 DATABASES = {
-    'default': dj_database_url.config(
-        default='sqlite:///db.sqlite3',
-        conn_max_age=600,
-        ssl_require=False
-    )
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'guru_db',       # the database name you created
+        'USER': 'guru_user',     # the user you created
+        'PASSWORD': 'mypassword',# the password you set
+        'HOST': 'localhost',
+        'PORT': '5432',
+    }
 }
-
 
 
 
