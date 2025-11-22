@@ -12,7 +12,8 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 import os
-import dj_database_url
+from dotenv import load_dotenv
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -77,14 +78,15 @@ TEMPLATES = [
     },
 ]
 
-#WSGI_APPLICATION = 'guru_project.wsgi.application'
-
+WSGI_APPLICATION = 'guru_project.wsgi.application'
+DB_LIVE=os.getenv("DB_LIVE")
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 
-DATABASES = {
+if DB_LIVE in ["False",False]:
+    DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'guru_db',       # the database name you created
@@ -94,6 +96,19 @@ DATABASES = {
         'PORT': '5432',
     }
 }
+else:
+
+ DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.getenv("DB_NAME"),       # the database name you created
+        'USER': os.getenv("DB_USER"),     # the user you created
+        'PASSWORD': os.getenv("DB_PASSWORD"),# the password you set
+        'HOST': os.getenv("DB_HOST"),
+        'PORT': os.getenv("DB_PORT"),
+    }
+ }
+
 
 
 
@@ -158,7 +173,7 @@ LOGOUT_REDIRECT_URL = '/'
 #STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"  # 👈 Add this line
-
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
