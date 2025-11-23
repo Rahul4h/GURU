@@ -85,20 +85,20 @@ DB_LIVE=os.getenv("DB_LIVE")
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 
-#if DB_LIVE in ["False",False]:
-    #DATABASES = {
-    #'default': {
-      #  'ENGINE': 'django.db.backends.postgresql',
-      #  'NAME': 'guru_db',       # the database name you created
-      #  'USER': 'guru_user',     # the user you created
-      #  'PASSWORD': 'mypassword',# the password you set
-      #  'HOST': 'localhost',
-       # 'PORT': '5432',
-   # }
-#}
-#else:
+if DB_LIVE in ["False",False]:
+    DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'guru_db',       # the database name you created
+        'USER': 'guru_user',     # the user you created
+        'PASSWORD': 'mypassword',# the password you set
+        'HOST': 'localhost',
+        'PORT': '5432',
+    }
+}
+else:
 
-DATABASES = {
+ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': os.getenv("DB_NAME"),       # the database name you created
@@ -115,6 +115,8 @@ CSRF_TRUSTED_ORIGINS = [
     'https://guru-production-0d22.up.railway.app',
 ]
 
+# In settings.py
+DOMAIN = "https://guru-production-0d22.up.railway.app"  # your Railway app domain
 
 
 
