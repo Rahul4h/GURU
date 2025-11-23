@@ -110,6 +110,12 @@ else:
  }
 
 
+# settings.py
+CSRF_TRUSTED_ORIGINS = [
+    'https://guru-production-0d22.up.railway.app',
+]
+
+
 
 
 
