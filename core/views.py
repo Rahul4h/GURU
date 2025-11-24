@@ -436,8 +436,8 @@ def signup_view(request):
         # Generate email verification link
         token = default_token_generator.make_token(user)
         uid = urlsafe_base64_encode(force_bytes(user.pk))
-        verify_url = f"http://127.0.0.1:8000/verify/{uid}/{token}/"
-        #verify_url = f"{settings.DOMAIN}/verify/{uid}/{token}/"
+        #verify_url = f"http://127.0.0.1:8000/verify/{uid}/{token}/"
+        verify_url = f"{settings.DOMAIN}/verify/{uid}/{token}/"
 
 
         subject = "Verify your email - GURU"
