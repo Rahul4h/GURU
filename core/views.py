@@ -436,7 +436,7 @@ def signup_view(request):
         # Generate email verification link
         token = default_token_generator.make_token(user)
         uid = urlsafe_base64_encode(force_bytes(user.pk))
-       # verify_url = f"http://127.0.0.1:8000/verify/{uid}/{token}/"
+        #verify_url = f"http://127.0.0.1:8000/verify/{uid}/{token}/"
         verify_url = f"{settings.DOMAIN}/verify/{uid}/{token}/"
 
 
@@ -723,7 +723,7 @@ def analyze_past_contests(contests, contest_type, max_contests=30):
 # -----------------------------
 # Fetch problems by tag & rating, skipping solved (cached 24h)
 # -----------------------------
-def fetch_problems(tag, rating, solved_set=None, limit=10):
+def fetch_problems(tag, rating, solved_set=None, limit=5):
     key = f"cf_problems_{tag}_{rating}"
     problems = cache.get(key)
     if problems is None:
