@@ -436,8 +436,8 @@ def signup_view(request):
         # Generate email verification link
         token = default_token_generator.make_token(user)
         uid = urlsafe_base64_encode(force_bytes(user.pk))
-        #verify_url = f"http://127.0.0.1:8000/verify/{uid}/{token}/"
-        verify_url = f"{settings.DOMAIN}/verify/{uid}/{token}/"
+        verify_url = f"http://127.0.0.1:8000/verify/{uid}/{token}/"
+        #verify_url = f"{settings.DOMAIN}/verify/{uid}/{token}/"
 
 
         subject = "Verify your email - GURU"
@@ -638,132 +638,276 @@ from django.contrib.auth.decorators import login_required
 # -----------------------------
 # Safe JSON fetch
 # -----------------------------
-def safe_get_json(url, timeout=10):
-    try:
-        res = requests.get(url, timeout=timeout)
-        res.raise_for_status()
-        return res.json()
-    except requests.exceptions.RequestException as e:
-        print(f"⚠️ Request failed: {e} for URL: {url}")
-        return None
-    except ValueError:
-        print(f"⚠️ JSON decode failed for URL: {url}")
-        return None
+# put this near top of your views.py or in core/cf_helpers.py and import it
+import requests
+import time
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+from collections import defaultdict, Counter
+from django.core.cache import cache
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import render
+import logging
+
+logger = logging.getLogger(__name__)
+
+# --------- CONFIG ----------
+TIMEOUT = 3                 # short timeout for Railway-friendly requests
+RETRIES = 2                 # number of retries for transient failures
+BACKOFF_FACTOR = 0.3
+MAX_CONTESTS_ANALYZE = 20   # keep it small to avoid long processing
+PROBLEM_CACHE_TTL = 24 * 3600
+CONTEST_CACHE_TTL = 60 * 60
+ANALYSIS_CACHE_TTL = 6 * 3600
+
+# --------- SESSION WITH RETRIES ----------
+_session = None
+
+
+def get_session():
+    global _session
+    if _session is None:
+        s = requests.Session()
+        retry = Retry(
+            total=RETRIES,
+            read=RETRIES,
+            connect=RETRIES,
+            backoff_factor=BACKOFF_FACTOR,
+            status_forcelist=(500, 502, 503, 504),
+            allowed_methods=frozenset(['GET', 'POST'])
+        )
+        adapter = HTTPAdapter(max_retries=retry)
+        s.mount("https://", adapter)
+        s.mount("http://", adapter)
+        _session = s
+    return _session
+
 
 # -----------------------------
-# Fetch all contests
+# SAFE GET JSON (Railway safe)
+# -----------------------------
+def safe_get_json(url, timeout=TIMEOUT):
+    """
+    Returns parsed JSON dict on success, or None on failure.
+    Does not raise; logs errors so Railway shows the reason.
+    """
+    try:
+        s = get_session()
+        resp = s.get(url, timeout=timeout)
+        resp.raise_for_status()
+
+        # parse json
+        try:
+            data = resp.json()
+        except ValueError:
+            logger.warning("JSON decode failed for URL: %s", url)
+            return None
+
+        # Codeforces uses {status: "OK", result: ...}
+        # but other endpoints might behave differently; we return the whole dict
+        return data
+
+    except requests.exceptions.RequestException as e:
+        logger.warning("Request failed for URL: %s error: %s", url, e)
+        return None
+    except Exception as e:
+        # Catch-all so view never crashes here
+        logger.exception("Unexpected error fetching URL %s : %s", url, e)
+        return None
+
+
+# -----------------------------
+# Fetch all contests (cached)
 # -----------------------------
 def get_contests():
-    key = "cf_contests"
+    key = "cf_contests_v1"
     contests = cache.get(key)
-    if contests is None:
-        url = "https://codeforces.com/api/contest.list?gym=false"
-        data = safe_get_json(url)
-        if not data or data.get("status") != "OK":
-            return []
+    if contests is not None:
+        return contests
+
+    url = "https://codeforces.com/api/contest.list?gym=false"
+    data = safe_get_json(url)
+    if not data:
+        return []
+    # Defensive: expect dict with status/result fields
+    if isinstance(data, dict) and data.get("status") == "OK" and "result" in data:
         contests = data["result"]
-        cache.set(key, contests, timeout=3600)  # cache 1h
+    elif isinstance(data, list):
+        # fallback if some unexpected shape
+        contests = data
+    else:
+        return []
+
+    cache.set(key, contests, timeout=CONTEST_CACHE_TTL)
     return contests
+
 
 # -----------------------------
 # Analyze past contests for tags & ratings
 # -----------------------------
-def analyze_past_contests(contests, contest_type, max_contests=30):
+def analyze_past_contests(contests, contest_type, max_contests=MAX_CONTESTS_ANALYZE):
     key = f"cf_analysis_{contest_type}"
     cached = cache.get(key)
-    if cached:
+    if cached is not None:
         return cached
 
     tag_stats = defaultdict(Counter)
     rating_stats = defaultdict(list)
     counted = 0
 
+    # iterate contests (they are typically sorted by start time descending)
     for contest in contests:
-        if contest_type not in contest.get("name", ""):
-            continue
-        if contest.get("phase") != "FINISHED":
-            continue
         if counted >= max_contests:
             break
 
-        cid = contest.get("id")
-        standings_url = f"https://codeforces.com/api/contest.standings?contestId={cid}&from=1&count=1"
-
-        res = safe_get_json(standings_url)
-        if not res or res.get("status") != "OK":
+        name = contest.get("name", "")
+        phase = contest.get("phase")
+        if not name or contest_type not in name:
+            continue
+        if phase != "FINISHED":
             continue
 
-        problems = res["result"].get("problems", [])
+        cid = contest.get("id")
+        if cid is None:
+            continue
+
+        standings_url = f"https://codeforces.com/api/contest.standings?contestId={cid}&from=1&count=1"
+        data = safe_get_json(standings_url)
+        if not data or not isinstance(data, dict) or data.get("status") != "OK":
+            # skip contests we couldn't fetch
+            logger.info("Skipping contest %s (id=%s) due to missing standings", name, cid)
+            continue
+
+        problems = data.get("result", {}).get("problems", []) or []
         for p in problems:
             try:
-                idx = p["index"][0]
-                for tag in p.get("tags", []):
-                    tag_stats[idx][tag] += 1
-                if "rating" in p:
-                    rating_stats[idx].append(p["rating"])
+                idx = p.get("index")
+                if not idx:
+                    continue
+                # use first char as index label (A/B/C) if they are like "A", "B"
+                idx_label = idx[0] if isinstance(idx, str) and len(idx) > 0 else idx
+                for tag in p.get("tags", []) or []:
+                    tag_stats[idx_label][tag] += 1
+                if "rating" in p and isinstance(p["rating"], int):
+                    rating_stats[idx_label].append(p["rating"])
             except Exception as e:
-                print(f"⚠️ Problem processing failed: {e} in contest {cid}")
+                logger.warning("Problem processing failed for contest %s id=%s : %s", name, cid, e)
                 continue
 
         counted += 1
 
+    # build percentages and avg ratings
     percentages = {}
     for idx, counter in tag_stats.items():
-        total = sum(counter.values())
-        percentages[idx] = {tag: round(cnt * 100 / total, 2)
-                            for tag, cnt in counter.items()}
+        total = sum(counter.values()) or 1
+        percentages[idx] = {tag: round(cnt * 100.0 / total, 2) for tag, cnt in counter.items()}
 
-    avg_ratings = {idx: round(sum(rating_stats[idx]) / len(rating_stats[idx]), 0)
-                   for idx in rating_stats if rating_stats[idx]}
-
+    avg_ratings = {}
+    for idx, ratings in rating_stats.items():
+        if ratings:
+            avg_ratings[idx] = round(sum(ratings) / len(ratings))
     result = (percentages, avg_ratings)
-    cache.set(key, result, timeout=21600)  # cache 6h
+    cache.set(key, result, timeout=ANALYSIS_CACHE_TTL)
     return result
 
+
 # -----------------------------
-# Fetch problems by tag & rating, skipping solved (cached 24h)
+# Fetch problems by tag & rating, skipping solved (cached)
 # -----------------------------
 def fetch_problems(tag, rating, solved_set=None, limit=5):
+    # Use cache keyed by tag+rating so we don't fetch problemset repeatedly
     key = f"cf_problems_{tag}_{rating}"
     problems = cache.get(key)
-    if problems is None:
-        url = "https://codeforces.com/api/problemset.problems"
-        data = safe_get_json(url)
-        problems = []
-        if not data or "result" not in data:
-            return problems
+    if problems is not None:
+        # Filter solved_set again here to be safe (cache contains unsolved candidates)
+       if solved_set:
+          filtered = [p for p in problems if f"{p['contestId']}/{p['index']}" not in solved_set]
+          return filtered[:limit]
 
-        for p in data["result"].get("problems", []):
-            if "rating" not in p or tag not in p.get("tags", []):
+       return problems[:limit]
+
+
+    url = "https://codeforces.com/api/problemset.problems"
+    data = safe_get_json(url)
+    problems = []
+    if not data or not isinstance(data, dict) or "result" not in data:
+        cache.set(key, problems, timeout=PROBLEM_CACHE_TTL)
+        return problems
+
+    all_problems = data["result"].get("problems", []) or []
+
+    for p in all_problems:
+        try:
+            # require rating and tag match
+            if "rating" not in p:
                 continue
-            if abs(p["rating"] - rating) > 200:
+            if tag not in (p.get("tags") or []):
+                continue
+            # only accept rating within +/-200 of requested rating to keep relevant
+            if rating and abs(int(p.get("rating", 0)) - int(rating)) > 200:
                 continue
 
             prob_id = f"{p['contestId']}/{p['index']}"
+
             if solved_set and prob_id in solved_set:
                 continue
 
             problems.append({
-                "name": p["name"],
+                "name": p.get("name"),
                 "link": f"https://codeforces.com/contest/{p['contestId']}/problem/{p['index']}",
-                "rating": p["rating"],
-                "tags": p["tags"]
+
+                "rating": p.get("rating"),
+                "tags": p.get("tags", []),
+                "contestId": p.get("contestId"),
+                "index": p.get("index"),
             })
-            if len(problems) >= limit:
-                break
+        except Exception as e:
+            # keep going on malformed problem entries
+            logger.debug("Skipping malformed problem entry: %s", e)
+            continue
 
-        cache.set(key, problems, timeout=86400)  # cache 24h
+        if len(problems) >= limit:
+            break
 
+    cache.set(key, problems, timeout=PROBLEM_CACHE_TTL)
     return problems
 
+
 # -----------------------------
-# Main view: Contest preparation
+# Helper to get solved IDs from submissions (safe)
+# -----------------------------
+def get_solved_problem_ids(submissions):
+    solved = set()
+    if not submissions:
+        return solved
+
+    for sub in submissions:
+        try:
+            if sub.get('verdict') == 'OK' and 'problem' in sub:
+                prob = sub['problem']
+                solved.add(f"{prob.get('contestId')}/{prob.get('index')}")
+        except Exception:
+            continue
+
+    return solved
+
+
+
+# -----------------------------
+# Main view: Contest preparation (safe)
 # -----------------------------
 @login_required
 def conprep_page(request):
-    contests = get_contests()
-    handle = request.user.username
-    submissions = get_user_submissions(handle)
+    # get contests (cached)
+    contests = get_contests() or []
+    handle = getattr(request.user, 'username', None) or ""
+    # safe retrieval of submissions - your get_user_submissions should be defensive too
+    try:
+        submissions = get_user_submissions(handle) if handle else []
+    except Exception as e:
+        logger.warning("Failed to fetch submissions for %s: %s", handle, e)
+        submissions = []
+
     solved_set = get_solved_problem_ids(submissions)
 
     # Upcoming contests
@@ -773,8 +917,8 @@ def conprep_page(request):
 
     prep_data = {}
     if next_contest:
+        name = next_contest.get("name", "") or ""
         # Determine contest type
-        name = next_contest.get("name", "")
         if "Div. 2" in name:
             contest_type = "Div. 2"
         elif "Div. 3" in name:
@@ -788,23 +932,39 @@ def conprep_page(request):
         else:
             contest_type = "Global"
 
-        # Analyze past contests
-        percentages, avg_ratings = analyze_past_contests(contests, contest_type)
+        # Analyze past contests (cached)
+        try:
+            percentages, avg_ratings = analyze_past_contests(contests, contest_type)
+        except Exception as e:
+            logger.exception("analyze_past_contests failed: %s", e)
+            percentages, avg_ratings = {}, {}
 
-        # Prepare problems by index
-        for idx, tag_data in percentages.items():
-            prep_data[idx] = {
-                "tags": tag_data,
-                "avg_rating": avg_ratings.get(idx, 1200),
-                "problems": []
-            }
+        # Prepare problems by index (limited)
+        for idx, tag_data in (percentages or {}).items():
+            try:
+                prep_data[idx] = {
+                    "tags": tag_data,
+                    "avg_rating": int(avg_ratings.get(idx, 1200)),
+                    "problems": []
+                }
+            except Exception:
+                prep_data[idx] = {
+                    "tags": tag_data,
+                    "avg_rating": 1200,
+                    "problems": []
+                }
 
             top_tags = sorted(tag_data.items(), key=lambda x: -x[1])[:2]
             for tag, _ in top_tags:
                 rating = avg_ratings.get(idx, 1200)
-                problems = fetch_problems(tag, rating, solved_set=solved_set, limit=5)
+                try:
+                    problems = fetch_problems(tag, rating, solved_set=solved_set, limit=5)
+                except Exception as e:
+                    logger.warning("fetch_problems failed for tag=%s rating=%s : %s", tag, rating, e)
+                    problems = []
                 prep_data[idx]["problems"].extend(problems)
 
+    # render safely even if some parts failed
     return render(request, "contest_prep.html", {
         "upcoming": upcoming[:5],
         "next_contest": next_contest,
