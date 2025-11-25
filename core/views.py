@@ -436,8 +436,8 @@ def signup_view(request):
         # Generate email verification link
         token = default_token_generator.make_token(user)
         uid = urlsafe_base64_encode(force_bytes(user.pk))
-        #verify_url = f"http://127.0.0.1:8000/verify/{uid}/{token}/"
-        verify_url = f"{settings.DOMAIN}/verify/{uid}/{token}/"
+        verify_url = f"http://127.0.0.1:17520/verify/{uid}/{token}/"
+        #verify_url = f"{settings.DOMAIN}/verify/{uid}/{token}/"
 
 
         subject = "Verify your email - GURU"
@@ -969,4 +969,14 @@ def conprep_page(request):
         "upcoming": upcoming[:5],
         "next_contest": next_contest,
         "prep_data": prep_data
+    })
+
+
+from django.shortcuts import render
+from .models import Tutorial
+
+def tutorial_page(request):
+    tutorials = Tutorial.objects.order_by('-created_at')  # latest first
+    return render(request, "tutorial_page.html", {
+        "tutorials": tutorials
     })

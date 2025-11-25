@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Tutorials | GURU{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h2>Tutorials</h2>
+  <div class="row">
+    {% if tutorials %}
+      {% for tut in tutorials %}
+      <div class="col-md-6 mb-3">
+        <div class="card h-100">
+          <div class="card-body">
+            <h5 class="card-title">{{ tut.title }}</h5>
+            <p class="card-subtitle mb-2 text-muted">by {{ tut.author.username }} — {{ tut.created_at|date:"M d, Y" }}</p>
+            <p class="card-text">{{ tut.content|truncatechars:200 }}</p>
+            {% if tut.video %}
+            <video width="100%" controls>
+              <source src="{{ tut.video.url }}" type="video/mp4">
+              Your browser does not support HTML video.
+            </video>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="text-muted">No tutorials yet.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

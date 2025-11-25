@@ -28,6 +28,9 @@ urlpatterns = [
     path('conprep/',views.conprep_page, name='conprep_page'),
     path('contact/', views.contact_page, name='contact'),
 
+    path('tutorial/', views.tutorial_page, name='tutorial_page'),
+
+
  # new blog page
 
 
