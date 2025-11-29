@@ -29,6 +29,7 @@ urlpatterns = [
     path('contact/', views.contact_page, name='contact'),
 
     path('tutorial/', views.tutorial_page, name='tutorial_page'),
+    path('about/', views.about_page, name='about_page')
 
 
  # new blog page

@@ -1,24 +1,58 @@
 {% extends 'base.html' %}
 {% load static %}
 
-
 {% block title %}Login{% endblock %}
 
 {% block content %}
+<div class="min-h-screen flex flex-col items-center justify-center bg-gray-100 py-10 px-4">
 
-    <h2>Login</h2>
+    <!-- Logo at the top -->
     
+    <div class="w-full max-w-md bg-white shadow-xl rounded-2xl p-8">
 
-    {% for message in messages %}
-        <p style="color:red;">{{ message }}</p>
-    {% endfor %}
-    <form method="POST">
-        {% csrf_token %}
-        <input type="text" name="username" placeholder="Username" required><br>
-        <input type="password" name="password" placeholder="Password" required><br>
-        <button type="submit">Login</button>
-    </form>
-    <p>Don’t have an account? <a href="{% url 'signup' %}">Sign up</a></p>
+        <h2 class="text-2xl font-bold text-center text-gray-800 mb-6">Welcome Back</h2>
 
+        {% for message in messages %}
+            <p class="text-red-600 text-center mb-2">{{ message }}</p>
+        {% endfor %}
 
+        <form method="POST" class="space-y-4">
+            {% csrf_token %}
+
+            <input 
+                type="text" 
+                name="username" 
+                placeholder="Username" 
+                required
+                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+            >
+
+            <input 
+                type="password" 
+                name="password" 
+                placeholder="Password" 
+                required
+                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+            >
+
+            <button 
+                type="submit" 
+                class="w-full bg-blue-600 text-black py-2 rounded-lg font-semibold hover:bg-blue-700 transition"
+            >
+                Login
+            </button>
+        </form>
+
+        <p class="text-center text-gray-600 mt-4">
+            Don’t have an account? 
+            <a href="{% url 'signup' %}" class="text-blue-600 font-semibold hover:underline">
+                Sign Up
+            </a>
+        </p>
+
+        <!-- Optional: Google Login Button -->
+        
+
+    </div>
+</div>
 {% endblock %}

@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+
+    <h2 class="fw-bold mb-3">🤖 GURU – Codeforces Training Assistant</h2>
+    <p>
+        <strong>GURU</strong> is a Django-powered web application designed to support competitive programmers in improving
+        their Codeforces performance. It integrates directly with the Codeforces API to analyze user profiles,
+        visualize rating progress, and provide personalized problem recommendations based on weak topics and skill gaps.
+    </p>
+
+    <h3 class="mt-4">🚀 Key Features</h3>
+
+    <h5 class="mt-3">🔑 User Authentication</h5>
+    <ul>
+        <li>Google OAuth login using <strong>django-allauth</strong></li>
+        <li>Secure sign-up, login, and logout</li>
+        <li>Dashboard accessible only to authenticated users</li>
+    </ul>
+
+    <h5 class="mt-3">📊 Codeforces Profile Integration</h5>
+    <ul>
+        <li>Import & verify Codeforces handle</li>
+        <li>Fetch and display complete rating history</li>
+        <li>Interactive rating charts and performance graphs</li>
+        <li>Compare user ratings in the leaderboard</li>
+    </ul>
+
+    <h5 class="mt-3">🎯 Smart Suggestions</h5>
+    <ul>
+        <li>Analyze solved vs. unsolved problems</li>
+        <li>Identify weak → strong tags for improvement</li>
+        <li>Recommend problems across four difficulty levels:
+            <ul>
+                <li>800–1100</li>
+                <li>1200–1400</li>
+                <li>1500–1600</li>
+                <li>1600–1900</li>
+            </ul>
+        </li>
+        <li>Direct links to recommended Codeforces problems</li>
+    </ul>
+
+    <h5 class="mt-3">📝 Suggestions Page</h5>
+    <ul>
+        <li>Clean UI showing tags and problems per difficulty band</li>
+        <li>Expandable sections for detailed recommendations</li>
+    </ul>
+
+    <h5 class="mt-3">📈 Leaderboard</h5>
+    <ul>
+        <li>Compare users by rating, problem count, and progress</li>
+        <li>Contest preparation insights:
+            <ul>
+                <li>View average difficulty of past contests</li>
+                <li>Study frequently occurring problem topics</li>
+                <li>Solve past contest problems efficiently</li>
+            </ul>
+        </li>
+    </ul>
+
+    <h3 class="mt-4">🏗️ Tech Stack</h3>
+    <ul>
+        <li><strong>Backend:</strong> Django, Django ORM</li>
+        <li><strong>Frontend:</strong> HTML, CSS, Bootstrap, Chart.js</li>
+        <li><strong>Database:</strong> SQLite (PostgreSQL recommended for production)</li>
+        <li><strong>Authentication:</strong> Google OAuth via django-allauth</li>
+        <li><strong>Machine Learning:</strong> NumPy, pandas, scikit-learn</li>
+        <li><strong>API Integration:</strong> Codeforces API</li>
+    </ul>
+
+    <h3 class="mt-4">⚙️ Installation & Setup</h3>
+    <ol>
+        <li>Clone the repository:
+            <pre><code>git clone https://github.com/your-username/GURU.git
+cd GURU
+            </code></pre>
+        </li>
+
+        <li>Create and activate a virtual environment:
+            <pre><code>python -m venv venv
+source venv/bin/activate   # Linux/Mac
+venv\Scripts\activate      # Windows
+            </code></pre>
+        </li>
+
+        <li>Apply migrations:
+            <pre><code>python manage.py migrate</code></pre>
+        </li>
+
+        <li>Configure Google OAuth:
+            <ul>
+                <li>Create an OAuth App in Google Cloud Console</li>
+                <li>Add redirect URI: <code>http://127.0.0.1:8000/</code></li>
+                <li>Add Client ID and Secret to <code>settings.py</code></li>
+            </ul>
+        </li>
+
+        <li>Run the server:
+            <pre><code>python manage.py runserver</code></pre>
+        </li>
+    </ol>
+
+    <h3 class="mt-4">👨‍💻 Author</h3>
+    <p class="mb-5">
+        <strong>Rahul Ghosh</strong> — Django & FastAPI Developer  
+    </p>
+
+</div>
+{% endblock %}

@@ -301,12 +301,16 @@ def recommend_problems_by_range(submissions, problems, solved_problems, ranges, 
             prob = sub['problem']
             tags = prob.get('tags', [])
             verdict = sub.get('verdict')
+            
+
             if verdict == 'OK':
                 for tag in tags:
+                 if total_attempts[tag] <=30:
                     correct_tags[tag] += 1
                     total_attempts[tag] += 1
             elif verdict in ['WRONG_ANSWER', 'TIME_LIMIT_EXCEEDED', 'RUNTIME_ERROR']:
                 for tag in tags:
+                  if total_attempts[tag] <=30:
                     wrong_tags[tag] += 1
                     total_attempts[tag] += 1
 
@@ -366,6 +370,12 @@ def ml_suggestions_view(request):
         handle = body.get('handle')
 
         submissions = get_user_submissions(handle)
+        #added
+        submissions = sorted(
+            submissions,
+            key=lambda x: x.get('creationTimeSeconds', 0),
+            reverse=True
+        )
         problems = get_problemset()
         solved_problems = get_solved_problem_ids(submissions)
 
@@ -436,7 +446,7 @@ def signup_view(request):
         # Generate email verification link
         token = default_token_generator.make_token(user)
         uid = urlsafe_base64_encode(force_bytes(user.pk))
-        verify_url = f"http://127.0.0.1:17520/verify/{uid}/{token}/"
+        verify_url = f"http://127.0.0.1:8000/verify/{uid}/{token}/"
         #verify_url = f"{settings.DOMAIN}/verify/{uid}/{token}/"
 
 
@@ -980,3 +990,6 @@ def tutorial_page(request):
     return render(request, "tutorial_page.html", {
         "tutorials": tutorials
     })
+
+def about_page(request):
+    return render(request, "about_page.html")
