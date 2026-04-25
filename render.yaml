@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: guru-project
+    env: python
+    buildCommand: "pip install -r requirements.txt && python manage.py collectstatic --noinput"
+    startCommand: "python manage.py migrate && daphne -b 0.0.0.0 -p $PORT guru_project.asgi:application"
