@@ -446,7 +446,7 @@ def signup_view(request):
         # Generate email verification link
         token = default_token_generator.make_token(user)
         uid = urlsafe_base64_encode(force_bytes(user.pk))
-        verify_url = f"https://guru-2-wmjq.onrender.com/verify/{uid}/{token}/"
+        verify_url = f"https://guru-2-naku.onrender.com/verify/{uid}/{token}/"
         #verify_url = f"{settings.DOMAIN}/verify/{uid}/{token}/"
 
 
