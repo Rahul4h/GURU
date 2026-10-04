@@ -1,3 +1,5 @@
+Live Link: https://guru-3.onrender.com/
+
 # 🤖 GURU – Codeforces Training Assistant
 
 **GURU** is a **Django  web app** that integrates with **Codeforces** to help competitive programmers improve their problem-solving skills.  
